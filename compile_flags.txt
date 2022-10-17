@@ -17,15 +17,16 @@
 -DARDUINO_BOARD=\"Espressif ESP32 Dev Module\"
 -DARDUINO_PARTITION_default
 -mlong-calls
--I/home/ptt/projecten/elektronica/platformio/zonneboiler/include
--I/home/ptt/projecten/elektronica/platformio/zonneboiler/src
--I/home/ptt/projecten/elektronica/platformio/zonneboiler/.pio/libdeps/esp32dev/DallasTemperature
--I/home/ptt/projecten/elektronica/platformio/zonneboiler/.pio/libdeps/esp32dev/OneWire
--I/home/ptt/projecten/elektronica/platformio/zonneboiler/.pio/libdeps/esp32dev/Adafruit MAX31865 library
--I/home/ptt/projecten/elektronica/platformio/zonneboiler/.pio/libdeps/esp32dev/LiquidCrystal_I2C
--I/home/ptt/projecten/elektronica/platformio/zonneboiler/.pio/libdeps/esp32dev/ESP Async WebServer/src
--I/home/ptt/projecten/elektronica/platformio/zonneboiler/.pio/libdeps/esp32dev/AsyncElegantOTA/src
--I/home/ptt/projecten/elektronica/platformio/zonneboiler/.pio/libdeps/esp32dev/AsyncTCP/src
+-I/home/ptt/projecten/elektronica/zonneboiler/include
+-I/home/ptt/projecten/elektronica/zonneboiler/src
+-I/home/ptt/projecten/elektronica/zonneboiler/.pio/libdeps/esp32dev/DallasTemperature
+-I/home/ptt/projecten/elektronica/zonneboiler/.pio/libdeps/esp32dev/OneWire
+-I/home/ptt/projecten/elektronica/zonneboiler/.pio/libdeps/esp32dev/Adafruit MAX31865 library
+-I/home/ptt/projecten/elektronica/zonneboiler/.pio/libdeps/esp32dev/Adafruit BusIO
+-I/home/ptt/projecten/elektronica/zonneboiler/.pio/libdeps/esp32dev/LiquidCrystal_I2C
+-I/home/ptt/projecten/elektronica/zonneboiler/.pio/libdeps/esp32dev/ESP Async WebServer/src
+-I/home/ptt/projecten/elektronica/zonneboiler/.pio/libdeps/esp32dev/AsyncElegantOTA/src
+-I/home/ptt/projecten/elektronica/zonneboiler/.pio/libdeps/esp32dev/AsyncTCP/src
 -I/home/ptt/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/newlib/platform_include
 -I/home/ptt/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/newlib/platform_include/machine
 -I/home/ptt/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/freertos/include
