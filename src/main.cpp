@@ -16,6 +16,9 @@
 #include <DallasTemperature.h>
 
 #include <Adafruit_MAX31865.h>
+
+#include "localconfig.h"
+
 #ifndef SRC_REVISION
 #define SRC_REVISION "unversioned"
 #endif
@@ -79,9 +82,8 @@ void setPumpSpeed(int speed) {
   }
 }
 
-
-const char* ssid = "Brouwketel";
-const char* password = "levedromen";
+const char* ssid = STA_SSID;
+const char* password = STA_PASSWORD;
 
 LiquidCrystal_I2C lcd(0x27,20,4);  // set the LCD address to 0x27 for a 16 chars and 2 line display
 
