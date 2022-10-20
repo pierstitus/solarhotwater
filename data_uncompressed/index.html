@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Zonneboiler</title>
+  <meta charset='utf-8'>
+  <meta name="theme-color" content="#00878f">
+  <meta content='width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0' name='viewport'>
+
+  <style>
+    body {
+      font-family: 'Roboto', sans-serif;
+      font-size: 12pt;
+      margin: 0;
+      margin-top: 6px;
+    }
+
+    h1 {
+      font-size: 1.5em;
+      font-weight: normal;
+      margin: 0px 0px 12px 0px;
+    }
+
+    button {
+      font-size: 14pt;
+      width: 2em;
+    }
+
+    center {
+      padding: 1em;
+      margin: auto;
+      width: 90%;
+      box-shadow: #777 2px 2px 5px;
+      box-sizing: border-box;
+    }
+
+    td {
+      text-align: center;
+      vertical-align: top;
+    }
+
+    #loading {
+      margin-bottom: 12px;
+    }
+
+    .num {
+      width: 3em;
+    }
+
+    .value {
+      display: inline-block;
+      width: 3em;
+      text-align: right;
+    }
+    .label {
+      display: inline-block;
+      width: 12em;
+      text-align: right;
+    }
+    .unit {
+      display: inline-block;
+      width: 3em;
+      text-align: left;
+    }
+
+    @media only screen and (max-device-width: 700px) {
+      center {
+        width: 100%;
+        height: 100vh;
+        overflow: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <center>
+    <h1>Zonneboiler</h1>
+    <div style="font-size: 80%; margin-top: -10pt;">version: <span id="version"></span></div>
+    <div id="status">
+      <h2>Status</h2>
+      <span class="label">tBoilerTop: </span><span class="value" id="tBoilerTop">-</span><span class="unit">&deg;C</span><br/>
+      <span class="label">tBoilerMiddle: </span><span class="value" id="tBoilerMiddle">-</span><span class="unit">&deg;C</span><br/>
+      <span class="label">tBoilerBottom: </span><span class="value" id="tBoilerBottom">-</span><span class="unit">&deg;C</span><br/>
+      <span class="label">tSolar: </span><span class="value" id="tSolar">-</span><span class="unit">&deg;C</span><br/>
+      <span class="label">tSolarFrom: </span><span class="value" id="tSolarFrom">-</span><span class="unit">&deg;C</span><br/>
+      <span class="label">tSolarTo: </span><span class="value" id="tSolarTo">-</span><span class="unit">&deg;C</span><br/>
+      <span class="label">tTapWater: </span><span class="value" id="tTapWater">-</span><span class="unit">&deg;C</span><br/>
+      <span class="label">flowSolarMean: </span><span class="value" id="flowSolarMean">-</span><span class="unit">l/m</span><br/>
+      <span class="label">flowSolarMin: </span><span class="value" id="flowSolarMin">-</span><span class="unit">l/m</span><br/>
+      <span class="label">flowSolarMax: </span><span class="value" id="flowSolarMax">-</span><span class="unit">l/m</span><br/>
+      <span class="label">flowSolarStd: </span><span class="value" id="flowSolarStd">-</span><span class="unit">l/m</span><br/>
+      <span class="label">flowWaterMean: </span><span class="value" id="flowWaterMean">-</span><span class="unit">l/m</span><br/>
+      <span class="label">flowWaterMin: </span><span class="value" id="flowWaterMin">-</span><span class="unit">l/m</span><br/>
+      <span class="label">flowWaterMax: </span><span class="value" id="flowWaterMax">-</span><span class="unit">l/m</span><br/>
+      <span class="label">flowWaterStd: </span><span class="value" id="flowWaterStd">-</span><span class="unit">l/m</span><br/>
+      <span class="label">Pomp: </span><span class="value" id="pump">-</span><span class="unit">%</span><br/>
+      <span class="label">Heater: </span><span class="value" id="heater">-</span><span class="unit">W</span><br/>
+      <span class="label">Programmastaat: </span><span id="programstate">-</span><br/>
+      <span class="label">Status: </span><span id="statusline">-</span><br/>
+    </div>
+    <div id="control">
+      <h2>Control</h2>
+      Pompsnelheid: <input type="text" class="value" id="control_speed" value=""/>%<br/>
+      <input type="button" id="set_pump" value="Pomp aan"/>
+      <input type="button" id="set_pump_off" value="Pomp uit"/>
+      <input type="button" id="control_programma" value="programma"/>
+    </div>
+    <div id="config">
+      <h2>Settings</h2>
+      <form id="config_form" method="post" style="margin: 0px auto 8px auto" >
+        Vakantiemodus na: <input type="text" class="num" name="vakantieTijd" id="vakantieTijd"/> uur.<br/>
+        Log interval: <input type="text" class="num" name="logInterval" id="logInterval"/> s.<br/>
+        Motor reactie P: <input type="text" class="num" name="speedControlP" id="speedControlP"/><br/>
+        Richting afwisselen: <input type="checkbox" name="richtingAfwisselen" id="richtingAfwisselen"/>
+      </form>
+    </div>
+  </center>
+
+  <script>
+    var connection;
+    var lastMessage;
+    function getJson(yourUrl){
+      var Httpreq = new XMLHttpRequest(); // a new request
+      Httpreq.open("GET",yourUrl,false);
+      Httpreq.send(null);
+      return JSON.parse(Httpreq.responseText);
+    }
+    window.onload = function() {
+      var version = getJson("/version");
+      document.getElementById("version").innerHTML = version;
+      // var config = getJson("/config.json");
+      // document.getElementById("ssid").value = config.ssid;
+      // document.getElementById("password").value = config.password;
+      // document.getElementById("vakantieTijd").value = config.vakantieTijd;
+      // document.getElementById("logInterval").value = config.logInterval;
+      // document.getElementById("speedControlP").value = config.speedControlP;
+      // document.getElementById("richtingAfwisselen").checked = config.richtingAfwisselen;
+      document.getElementById("config_form").addEventListener('change',
+      function(e){e.target.style.backgroundColor = "pink"});
+
+      events = new EventSource('/events');
+      var es = new EventSource('/events');
+      connection = new WebSocket('ws://' + location.hostname + '/ws', ['arduino']);
+      connection.onopen = function () {
+        console.log('WebSocket connection opened');
+        connection.send('Connect ' + new Date());
+      };
+      connection.onerror = function (error) {
+        console.log('WebSocket Error ', error);
+      };
+      var statusMap = {
+        "t":"temperature",
+        "r":"rotation",
+        "s":"speed",
+        "u":"voltage",
+        "w":"weerstand",
+        "b":"bril",
+        "v":"verwarming",
+        "l":"luchtpomp",
+        "p":"programstate",
+        "x":"statusline",
+      };
+      connection.onmessage = function (e) {
+        lastMessage = new Date().getTime();
+        var values = e.data.split(",");
+        for (n in values) {
+          var v = values[n].split(":");
+          var element = document.getElementById(v[0]);
+          if (element) {
+            element.innerHTML = v[1];
+          } else if (v[0] == "c") {
+            console.log(v[1]);
+          } else {
+            console.log('Unknown message: ', values[n]);
+          }
+        }
+        return false;
+      };
+      connection.onclose = function (e) {
+        console.log('WebSocket connection closed');
+        console.log(e);
+        document.getElementById("statusline").innerHTML = 'WebSocket connection closed';
+      };
+      var cl = document.getElementById("set_pump");
+      var cr = document.getElementById("set_pump_off");
+      var cp = document.getElementById("control_programma");
+      cl.onmouseup = cl.ontouchend = cl.ontouchstart = function(e) {
+        connection.send("P" + document.getElementById("control_speed").value);
+        //e.preventDefault();
+      }
+      cr.onmouseup = cr.ontouchend = function(e) {
+        connection.send("P0");
+        //e.preventDefault();
+      }
+      cp.onmouseup = cp.ontouchend = function(e) {
+        connection.send("PP");
+        //e.preventDefault();
+      }
+    }
+    setInterval(function(){
+      if ((new Date().getTime() - lastMessage) > 1000) {
+        document.getElementById("status").style.backgroundColor = "grey";
+      } else {
+        document.getElementById("status").style.backgroundColor = "";
+      }
+    }, 500);
+  </script>
+
+</body>
+
+</html>

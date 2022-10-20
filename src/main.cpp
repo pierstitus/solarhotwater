@@ -1,10 +1,12 @@
-#include "esp32-hal.h"
 #include <Arduino.h>
 
+#include <FS.h>
+#include <SPIFFS.h>
 #include <WiFi.h>
 #include <AsyncTCP.h>
-
 #include <ESPAsyncWebServer.h>
+#include <SPIFFSEditor.h>
+
 #include <AsyncElegantOTA.h>
 
 #include <Wire.h>
@@ -14,7 +16,9 @@
 #include <DallasTemperature.h>
 
 #include <Adafruit_MAX31865.h>
-#include <cstdint>
+#ifndef SRC_REVISION
+#define SRC_REVISION "unversioned"
+#endif
 
 /* Board setup */
 
@@ -166,7 +170,8 @@ uint8_t char_bottomleft[8] = {
   B00000,
   B00000,
   B00000
-};uint8_t char_bottomright[8] = {
+};
+uint8_t char_bottomright[8] = {
   B00100,
   B00100,
   B00100,
@@ -195,6 +200,16 @@ uint8_t char_lpm[8] = {
   B11010,
   B10101,
   B10101
+};
+uint8_t char_leftarrow[8] = {
+  B00000,
+  B00100,
+  B01000,
+  B11111,
+  B01000,
+  B00100,
+  B00000,
+  B00000
 };
 
 struct {
@@ -230,19 +245,19 @@ class FlowMeter {
 
   FlowMeter() {}
 
-  void calcAndReset() {
-    if (count) {
-      mean = sum/count;
-      float a = (float)varSum/count - pow2((int)mean - (int)meanEst);
-      if (a >= 0) {
-        std = sqrt(a);
-      } else std = 999;
-    } else {
-      mean = 0;
+  bool calcAndReset() {
+    if (count < 10) {
+      return false;
     }
+    mean = sum/count;
+    float a = (float)varSum/count - pow2((int)mean - (int)meanEst);
+    if (a >= 0) {
+      std = sqrt(a);
+    } else std = 999;
     count = 0;
     sum = 0;
     varSum = 0;
+    return true;
   }
 
   void IRAM_ATTR isr() {
@@ -335,6 +350,41 @@ void IRAM_ATTR encoderInterrupt() {
   lastButtonState = but;
 }
 
+void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventType type, void * arg, uint8_t *data, size_t len){
+  if (type == WS_EVT_CONNECT) {
+    Serial.printf("ws[%s][%u] connect\n", server->url(), client->id());
+    // send current status
+    // if (brilOpen) {
+    //   client->text("b:open");
+    // } else {
+    //   client->text("b:dicht");
+    // }
+  } else if (type == WS_EVT_DISCONNECT) {
+    Serial.printf("ws[%s][%u] disconnect\n", server->url(), client->id());
+  } else if (type == WS_EVT_DATA) { //data packet
+    AwsFrameInfo * info = (AwsFrameInfo*)arg;
+    if(info->final && info->index == 0 && info->len == len){
+      //the whole message is in a single frame and we got all of it's data
+      Serial.printf("ws[%s][%u] %s-message[%llu]: ", server->url(), client->id(), (info->opcode == WS_TEXT)?"text":"binary", info->len);
+      if(info->opcode == WS_TEXT){
+        data[len] = 0;
+        Serial.printf("%s\n", (char*)data);
+        if (data[0] == 'P' && len >= 2) {            // motor control
+          if (data[1] == 'P') {
+          } else if (data[1] == '-' || (data[1] >= '0' && data[1] <= '9')) {
+            int s = String((char*)&data[1]).toInt();
+            Serial.println(s);
+            if (s >= 0 && s <= 100) {
+              pumpSpeed = s;
+              setPumpSpeed(s);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 void setup(void) {
   Serial.begin(115200);
 
@@ -387,13 +437,16 @@ void setup(void) {
     return;
   }
 
+  SPIFFS.begin();                             // Start the SPI Flash File System (SPIFFS)
+
   lcd.createChar(1, char_topleft);
-  // lcd.createChar(2, char_topright);
+  lcd.createChar(2, char_topright);
   lcd.createChar(3, char_bottomleft);
-  // lcd.createChar(4, char_bottomright);
+  lcd.createChar(4, char_bottomright);
   lcd.createChar(5, char_pipe);
   lcd.createChar(6, char_degree);
   lcd.createChar(7, char_lpm);
+  lcd.createChar(0, char_leftarrow); // custom character 0 is also accessable as \10
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
@@ -418,6 +471,10 @@ void setup(void) {
 
   tempSensors.setWaitForConversion(false); // Don't block the program while the temperature sensor is reading
   tempSensors.begin();                     // Start the temperature sensor
+  if (tempSensors.getDeviceCount() < 6) {
+    delay(1000);
+    tempSensors.begin();
+  }
   DS_delay = tempSensors.millisToWaitForConversion();
 
   // locate devices on the bus
@@ -446,11 +503,24 @@ void setup(void) {
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", "Hi! This is a sample response.");
+  AsyncElegantOTA.begin(&server);
+
+  server.on("/version", HTTP_GET, [](AsyncWebServerRequest *request) {
+    String info = "\"" SRC_REVISION " ";
+    info += WiFi.localIP().toString();
+    info += "\"";
+    request->send(200, "text/plain", info);
   });
 
-  AsyncElegantOTA.begin(&server);
+  server.serveStatic("/generate_204", SPIFFS, "/index.html"); //Android captive portal. Maybe not needed. Might be handled by notFound handler.
+  server.serveStatic("/fwlink", SPIFFS, "/index.html"); //Microsoft captive portal. Maybe not needed. Might be handled by notFound handler.
+
+  ws.onEvent(onWsEvent);
+  server.addHandler(&ws);
+  server.addHandler(new SPIFFSEditor(SPIFFS, "Zonneboiler", "password"));
+
+  server.serveStatic("/", SPIFFS, "/").setDefaultFile("index.html");
+
   server.begin();
   Serial.println("HTTP server started");
 }
@@ -480,6 +550,10 @@ void loop(void) {
     case 2:
       lcd.print("RTD:   ");
       input.encoder = RTDoffset;
+      break;
+    case 3:
+      lcd.print("Reset:   ");
+      input.encoder = 0;
       break;
     }
     lcd.setCursor(0, 2);
@@ -530,9 +604,20 @@ void loop(void) {
       RTDoffset = val;
       lcd.print(val);
     } else if (selected == 3) {
-      int val = constrain(input.encoder, 0, 12);
+      int val = constrain(input.encoder, 0, 1);
       input.encoder = val;
-      lcd.clear();
+      if (val) {
+        lcd.print("yes");
+        for (int n=1; n<1000; n++) {
+          delay(1);
+          if (input.encoder < 1) break;
+        }
+        if (input.encoder > 0) {
+          ESP.restart();
+        }
+      } else {
+        lcd.print("no");
+      }
       for (int n = 0; n < 4; n++) {
         lcd.setCursor(0, n); lcd.print(val + n, HEX);
         lcd.setCursor(3, n);
@@ -573,14 +658,24 @@ void loop(void) {
     Serial.print("tSolarTo:      "); Serial.println(sensors.tSolarTo);
     Serial.print("tTapWater:     "); Serial.println(sensors.tTapWater);
 
+    ws.textAll("tBoilerTop:" + String(sensors.tBoilerTop, 1) +
+              ",tBoilerMiddle:" + String(sensors.tBoilerMiddle, 1) +
+              ",tBoilerBottom:" + String(sensors.tBoilerBottom, 1) +
+              ",tSolarFrom:" + String(sensors.tSolarFrom, 1) +
+              ",tSolarTo:" + String(sensors.tSolarTo, 1) +
+              ",tSolar:" + String(sensors.tSolar, 1) +
+              ",tTapWater:" + String(sensors.tTapWater, 1) +
+              ",heater:" + String(heater) +
+              ",pump:" + String(pumpSpeed)
+    );
 //      ----------------------
-//      |                ___ |
+//      |       <-75°  '⌝___ |
 //      |         ⌜-75°-|65°||
 //      |        86° 12`|36°||
 //      |         ⌞-32°-|23°||
 //      ----------------------
     if (selected != 3) {
-    lcd.setCursor(15, 0); lcd.print(" ___ ");
+    lcd.setCursor(8, 0); lcd.print("\10  \5  \7\2___ ");
     lcd.setCursor(8, 1); lcd.print(" \1---\6-\5  \6\5");
     lcd.setCursor(8, 2); lcd.print("  \6   \7\5  \6\5");
     lcd.setCursor(8, 3); lcd.print(" \3---\6-\5  \6\5");
@@ -596,12 +691,22 @@ void loop(void) {
     }
     lcd.setCursor(0, 0); lcd.print(flowSolar.count);
     // lcd.print(","); lcd.print(flowWater.count);
-    flowSolar.calcAndReset();
-    flowWater.calcAndReset();
-    lcd.print("m"); lcd.print(flowSolar.mean);
-    lcd.print("i"); lcd.print(flowSolar.mind);
-    lcd.print("a"); lcd.print(flowSolar.maxd);
-    lcd.print("d"); lcd.print(flowSolar.std);
+    // lcd.print("m"); lcd.print(flowSolar.mean);
+    if (flowSolar.calcAndReset())
+      ws.textAll("flowSolarMean:" + String(flowSolar.mean) +
+                ",flowSolarMin:" + String(flowSolar.mind) +
+                ",flowSolarMax:" + String(flowSolar.maxd) +
+                ",flowSolarStd:" + String(flowSolar.std, 2)
+      );
+    if (flowWater.calcAndReset())
+      ws.textAll("flowWaterMean:" + String(flowWater.mean) +
+                ",flowWaterMin:" + String(flowWater.mind) +
+                ",flowWaterMax:" + String(flowWater.maxd) +
+                ",flowWaterStd:" + String(flowWater.std, 2)
+      );
+    // lcd.print("i"); lcd.print(flowSolar.mind);
+    // lcd.print("a"); lcd.print(flowSolar.maxd);
+    // lcd.print("d"); lcd.print(flowSolar.std);
     // lcd.print(","); lcd.print(flowWater.mean);
     // lcd.print(","); lcd.print(flowWater.std);
     // tempSensors.begin();
@@ -609,4 +714,5 @@ void loop(void) {
     //   printAddress(0);
 
   }
+  ws.cleanupClients();
 }
