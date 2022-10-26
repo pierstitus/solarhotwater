@@ -60,28 +60,6 @@
 
 #define pow2(x) ((x)<<1)
 
-void setPumpSpeed(int speed) {
-  /*
-  Pump PWM mode 1:
-    0     No PWM signal, auto mode
-    1-25  Maximum speed
-    26-214 Decreasing speed
-  215-232 Lowest speed
-  233-242 Hysteresis, pump starts in intervals to avoid clocking?
-  243-255 Pump stops
-  */
-  if (speed <= 0) {
-    relayOff(PIN_PUMP);
-    analogWrite(PIN_PUMP_PWM, 255);
-  } else {
-    relayOn(PIN_PUMP);
-    if (speed > 100) {
-      speed = 100;
-    }
-    analogWrite(PIN_PUMP_PWM, 220 - 2 * speed);
-  }
-}
-
 const char* ssid = STA_SSID;
 const char* password = STA_PASSWORD;
 
@@ -298,6 +276,12 @@ FlowMeter flowWater, flowSolar;
 int pumpSpeed = 0;
 int heater = 0;
 
+unsigned long timeSensePrev = 0.0;
+unsigned long timePumpStart = -60*60000;
+unsigned long senseInterval = 1000;
+
+int selected = 0;
+
 bool safeMode = false;
 
 AsyncWebServer server(80);
@@ -352,6 +336,29 @@ void IRAM_ATTR encoderInterrupt() {
   lastButtonState = but;
 }
 
+void setPumpSpeed(int speed) {
+  /*
+  Pump PWM mode 1:
+    0     No PWM signal, auto mode
+    1-25  Maximum speed
+    26-214 Decreasing speed
+  215-232 Lowest speed
+  233-242 Hysteresis, pump starts in intervals to avoid clocking?
+  243-255 Pump stops
+  */
+  pumpSpeed = speed;
+  if (speed <= 0) {
+    relayOff(PIN_PUMP);
+    analogWrite(PIN_PUMP_PWM, 255);
+  } else {
+    relayOn(PIN_PUMP);
+    if (speed > 100) {
+      speed = 100;
+    }
+    analogWrite(PIN_PUMP_PWM, 220 - 2 * speed);
+  }
+}
+
 void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventType type, void * arg, uint8_t *data, size_t len){
   if (type == WS_EVT_CONNECT) {
     Serial.printf("ws[%s][%u] connect\n", server->url(), client->id());
@@ -377,8 +384,8 @@ void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventT
             int s = String((char*)&data[1]).toInt();
             Serial.println(s);
             if (s >= 0 && s <= 100) {
-              pumpSpeed = s;
               setPumpSpeed(s);
+              timePumpStart = millis();
             }
           }
         }
@@ -527,11 +534,6 @@ void setup(void) {
   Serial.println("HTTP server started");
 }
 
-unsigned long timeSensePrev = 0.0;
-unsigned long senseInterval = 1000;
-
-int selected = 0;
-
 void loop(void) {
   if (safeMode) return;
 
@@ -569,8 +571,9 @@ void loop(void) {
     lcd.setCursor(0, 2);
     if (selected == 0) {
       int val = constrain(input.encoder, 0, 100);
-      pumpSpeed = input.encoder = val;
+      input.encoder = val;
       setPumpSpeed(val);
+      timePumpStart = millis();
       lcd.print(val);
     } else if (selected == 1) {
       int val = constrain(input.encoder, 0, 3);
@@ -653,6 +656,17 @@ void loop(void) {
     sensors.tSolarFrom    = tempSensors.getTempC(thermo.tSolarFrom);
     sensors.tSolarTo      = tempSensors.getTempC(thermo.tSolarTo);
     sensors.tTapWater     = tempSensors.getTempC(thermo.tTapWater);
+    if (pumpSpeed == 0 && sensors.tSolar > sensors.tBoilerMiddle + 10 &&
+        currentMillis - timePumpStart > 10*60000) {
+      setPumpSpeed(80);
+      timePumpStart = currentMillis;
+    }
+    if (currentMillis - timePumpStart > 30000 && pumpSpeed > 50) {
+      setPumpSpeed(8);
+    }
+    if (currentMillis - timePumpStart > 5*60000 && sensors.tSolarFrom < sensors.tSolarTo) {
+      setPumpSpeed(0);
+    }
     Serial.print("tBoilerTop:    "); Serial.println(sensors.tBoilerTop);
     Serial.print("tBoilerMiddle: "); Serial.println(sensors.tBoilerMiddle);
     Serial.print("tBoilerBottom: "); Serial.println(sensors.tBoilerBottom);
@@ -676,24 +690,21 @@ void loop(void) {
 //      |        86° 12`|36°||
 //      |         ⌞-32°-|23°||
 //      ----------------------
-    if (selected != 3) {
-    lcd.setCursor(8, 0); lcd.print("\10  \5  \7\2___ ");
+    lcd.setCursor(8, 0); lcd.print("\10  \6  \7\2___ ");
     lcd.setCursor(8, 1); lcd.print(" \1---\6-\5  \6\5");
     lcd.setCursor(8, 2); lcd.print("  \6   \7\5  \6\5");
     lcd.setCursor(8, 3); lcd.print(" \3---\6-\5  \6\5");
+    lcd.setCursor(9, 0); lcd.print(int(0.5f+sensors.tTapWater));
+    lcd.setCursor(12+(flowWater.count<10, 0); lcd.print(flowWater.count);
     lcd.setCursor(11, 1); lcd.print(int(0.5f+sensors.tSolarFrom));
     lcd.setCursor(16, 1); lcd.print(int(0.5f+sensors.tBoilerTop));
     lcd.setCursor(8, 2); lcd.print(int(0.5f+sensors.tSolar));
     // lcd.setCursor(5, 2); lcd.print((sensors.tSolar));
-    lcd.setCursor(12, 2); lcd.print(" 0");//int(0.5f+sensors.flowSolar));
+    lcd.setCursor(12+(flowSolar.count<10), 2); lcd.print(flowSolar.count);
     lcd.setCursor(16, 2); lcd.print(int(0.5f+sensors.tBoilerMiddle));
     lcd.setCursor(11, 3); lcd.print(int(0.5f+sensors.tSolarTo));
     lcd.setCursor(16, 3); lcd.print(int(0.5f+sensors.tBoilerBottom));
 
-    }
-    lcd.setCursor(0, 0); lcd.print(flowSolar.count);
-    // lcd.print(","); lcd.print(flowWater.count);
-    // lcd.print("m"); lcd.print(flowSolar.mean);
     if (flowSolar.calcAndReset())
       ws.textAll("flowSolarMean:" + String(flowSolar.mean) +
                 ",flowSolarMin:" + String(flowSolar.mind) +
