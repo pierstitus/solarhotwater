@@ -30,7 +30,7 @@
 #define PIN_I2C_SDA 21
 
 // SPI MAX31865 PT100 amplifier, default SPI pins
-#define PIN_SPI_CS 5
+#define PIN_PT100_CS 5
 #define PIN_SPI_SCK 18
 #define PIN_SPI_MISO 19
 #define PIN_SPI_MOSI 23
@@ -101,7 +101,7 @@ void printAddress(int index)
 }
 
 // pt100 temperature sensor in solar collector
-Adafruit_MAX31865 pt100 = Adafruit_MAX31865(PIN_SPI_CS);
+Adafruit_MAX31865 pt100 = Adafruit_MAX31865(PIN_PT100_CS);
 // The value of the Rref resistor. Use 430.0 for PT100 and 4300.0 for PT1000
 #define RREF      430.0
 // The 'nominal' 0-degrees-C resistance of the sensor
@@ -378,7 +378,7 @@ void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventT
       if(info->opcode == WS_TEXT){
         data[len] = 0;
         Serial.printf("%s\n", (char*)data);
-        if (data[0] == 'P' && len >= 2) {            // motor control
+        if (data[0] == 'P' && len >= 2) {            // pump control
           if (data[1] == 'P') {
           } else if (data[1] == '-' || (data[1] >= '0' && data[1] <= '9')) {
             int s = String((char*)&data[1]).toInt();
@@ -394,8 +394,19 @@ void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventT
   }
 }
 
+void WiFiStationDisconnected(WiFiEvent_t event, WiFiEventInfo_t info){
+  Serial.println("Disconnected from WiFi access point");
+  Serial.print("WiFi lost connection. Reason: ");
+  Serial.println(info.wifi_sta_disconnected.reason);
+  Serial.println("Trying to Reconnect");
+  // WiFi.begin(ssid, password);
+  WiFi.reconnect();
+}
+
 void setup(void) {
   Serial.begin(115200);
+  Serial.print("Zonneboiler version ");
+  Serial.println(SRC_REVISION);
 
   pinMode(PIN_ROTARY_ENCODER_CLK, INPUT);
   pinMode(PIN_ROTARY_ENCODER_DATA, INPUT);
@@ -407,11 +418,12 @@ void setup(void) {
   lcd.init();
   // Print a message to the LCD.
   lcd.backlight();
-  lcd.setCursor(3,0);
-  lcd.print("Zonneboiler");
+  lcd.setCursor(3,0); lcd.print("Zonneboiler");
+  lcd.setCursor(1,1); lcd.print(SRC_REVISION);
 
   if (!digitalRead(PIN_ROTARY_ENCODER_BUTTON)) {
     safeMode = true;
+    Serial.println ("Safe mode");
 
     WiFi.mode(WIFI_MODE_APSTA);
     WiFi.softAP("Zonneboiler", "password");
@@ -425,7 +437,7 @@ void setup(void) {
     while (WiFi.status() != WL_CONNECTED) {  // Wait for the Wi-Fi to connect
       delay(250);
       n += 250;
-      if (n > 5000) { // | !digitalRead(SEAT_SENSOR_PIN)) {
+      if (n > 5000) {
         Serial.println("Connection failed");
         break;
       }
@@ -511,6 +523,8 @@ void setup(void) {
   Serial.println(ssid);
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
+
+  WiFi.onEvent(WiFiStationDisconnected, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
 
   AsyncElegantOTA.begin(&server);
 
@@ -695,7 +709,7 @@ void loop(void) {
     lcd.setCursor(8, 2); lcd.print("  \6   \7\5  \6\5");
     lcd.setCursor(8, 3); lcd.print(" \3---\6-\5  \6\5");
     lcd.setCursor(9, 0); lcd.print(int(0.5f+sensors.tTapWater));
-    lcd.setCursor(12+(flowWater.count<10, 0); lcd.print(flowWater.count);
+    lcd.setCursor(12+(flowWater.count<10), 0); lcd.print(flowWater.count);
     lcd.setCursor(11, 1); lcd.print(int(0.5f+sensors.tSolarFrom));
     lcd.setCursor(16, 1); lcd.print(int(0.5f+sensors.tBoilerTop));
     lcd.setCursor(8, 2); lcd.print(int(0.5f+sensors.tSolar));
