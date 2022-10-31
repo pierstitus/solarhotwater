@@ -4,7 +4,7 @@ cd data_uncompressed
 mkdir -p ../data
 for f in *; do
   ext=${f##*.}
-  if [[ " html htm js css ico " == *" $ext "* ]]; then zip=".gz"; else zip=""; fi
+  if [[ " html htm js css " == *" $ext "* ]]; then zip=".gz"; else zip=""; fi
   if [ $f -nt ../data/$f$zip ]; then
     cp $f ../data/ && [ $zip ] && gzip -f ../data/$f
   fi
