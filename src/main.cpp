@@ -540,6 +540,12 @@ void setup(void) {
 
   ws.onEvent(onWsEvent);
   server.addHandler(&ws);
+
+  events.onConnect([](AsyncEventSourceClient *client){
+    client->send("hello!",NULL,millis(),1000);
+  });
+  server.addHandler(&events);
+
   server.addHandler(new SPIFFSEditor(SPIFFS, "Zonneboiler", "password"));
 
   server.serveStatic("/", SPIFFS, "/").setDefaultFile("index.html");
@@ -658,6 +664,7 @@ void loop(void) {
     uint16_t val = pt100.readRTD();
     uint8_t fault = pt100.readFault();
     if (fault) {
+      events.send("PT100 fault 0x" + String(fault, HEX), "console");
       Serial.print("Fault 0x"); Serial.println(fault, HEX);
       pt100.clearFault();
     } else {
@@ -688,7 +695,7 @@ void loop(void) {
     Serial.print("tSolarTo:      "); Serial.println(sensors.tSolarTo);
     Serial.print("tTapWater:     "); Serial.println(sensors.tTapWater);
 
-    ws.textAll("tBoilerTop:" + String(sensors.tBoilerTop, 1) +
+    events.send("tBoilerTop:" + String(sensors.tBoilerTop, 1) +
               ",tBoilerMiddle:" + String(sensors.tBoilerMiddle, 1) +
               ",tBoilerBottom:" + String(sensors.tBoilerBottom, 1) +
               ",tSolarFrom:" + String(sensors.tSolarFrom, 1) +
@@ -720,13 +727,13 @@ void loop(void) {
     lcd.setCursor(16, 3); lcd.print(int(0.5f+sensors.tBoilerBottom));
 
     if (flowSolar.calcAndReset())
-      ws.textAll("flowSolarMean:" + String(flowSolar.mean) +
+      events.send("flowSolarMean:" + String(flowSolar.mean) +
                 ",flowSolarMin:" + String(flowSolar.mind) +
                 ",flowSolarMax:" + String(flowSolar.maxd) +
                 ",flowSolarStd:" + String(flowSolar.std, 2)
       );
     if (flowWater.calcAndReset())
-      ws.textAll("flowWaterMean:" + String(flowWater.mean) +
+      events.send("flowWaterMean:" + String(flowWater.mean) +
                 ",flowWaterMin:" + String(flowWater.mind) +
                 ",flowWaterMax:" + String(flowWater.maxd) +
                 ",flowWaterStd:" + String(flowWater.std, 2)

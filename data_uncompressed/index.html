@@ -138,7 +138,6 @@
       function(e){e.target.style.backgroundColor = "pink"});
 
       events = new EventSource('/events');
-      var es = new EventSource('/events');
       connection = new WebSocket('ws://' + location.hostname + '/ws', ['arduino']);
       connection.onopen = function () {
         console.log('WebSocket connection opened');
@@ -147,30 +146,22 @@
       connection.onerror = function (error) {
         console.log('WebSocket Error ', error);
       };
-      var statusMap = {
-        "t":"temperature",
-        "r":"rotation",
-        "s":"speed",
-        "u":"voltage",
-        "w":"weerstand",
-        "b":"bril",
-        "v":"verwarming",
-        "l":"luchtpomp",
-        "p":"programstate",
-        "x":"statusline",
-      };
-      connection.onmessage = function (e) {
+      events.onmessage = function (e) {
         lastMessage = new Date().getTime();
-        var values = e.data.split(",");
-        for (n in values) {
-          var v = values[n].split(":");
-          var element = document.getElementById(v[0]);
-          if (element) {
-            element.innerHTML = v[1];
-          } else if (v[0] == "c") {
-            console.log(v[1]);
-          } else {
-            console.log('Unknown message: ', values[n]);
+        if (e.source == 'console') {
+          console.log(e.data);
+        } else {
+          var values = e.data.split(",");
+          for (n in values) {
+            var v = values[n].split(":", 2);
+            var element = document.getElementById(v[0]);
+            if (element) {
+              element.innerHTML = v[1];
+            } else if (v[0] == "c") {
+              console.log(v[1]);
+            } else {
+              console.log('Unknown message: ', values[n]);
+            }
           }
         }
         return false;
@@ -197,7 +188,7 @@
       }
     }
     setInterval(function(){
-      if ((new Date().getTime() - lastMessage) > 1000) {
+      if ((new Date().getTime() - lastMessage) > 5000) {
         document.getElementById("status").style.backgroundColor = "grey";
       } else {
         document.getElementById("status").style.backgroundColor = "";
