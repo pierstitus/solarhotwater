@@ -213,7 +213,12 @@ struct {
 
 class FlowMeter {
   public:
+  volatile uint32_t uliter;
   volatile uint32_t lastTime;
+  uint32_t ml;
+  uint32_t prevuliter;
+  uint32_t prevTime;
+  float lpm;
   volatile uint32_t count;
   volatile uint32_t sum;
   volatile uint32_t varSum;
@@ -226,6 +231,13 @@ class FlowMeter {
   FlowMeter() {}
 
   bool calcAndReset() {
+    uint32_t time = millis();
+    if (prevTime - time > 10) {
+      lpm = (float)(60000 * (uliter - prevuliter)) / (prevTime - time);
+      prevuliter = uliter;
+      prevTime = time;
+    }
+
     if (count < 10) {
       return false;
     }
@@ -256,6 +268,7 @@ class FlowMeter {
 void IRAM_ATTR isr(FlowMeter* f) {
   uint32_t time = millis();
   uint32_t delta = time - f->lastTime;
+
   if (f->count == 0) {
     f->meanEst = delta;
     f->sum = 0;
@@ -268,7 +281,11 @@ void IRAM_ATTR isr(FlowMeter* f) {
   if (delta < f->mind) f->mind = delta;
   if (delta > f->maxd) f->maxd = delta;
   f->varSum += pow2(delta - f->meanEst);
+
   f->lastTime = time;
+  if (delta > 1000) delta = 1000;
+  f->uliter += 1 * delta + 2262; // formula in microliter from measurements for YF-S201 flow meter
+  // f->uliter += 34 * delta + 2051; // formula in microliter from measurements for FY-B10 flow meter
 }
 
 FlowMeter flowWater, flowSolar;
@@ -276,9 +293,12 @@ FlowMeter flowWater, flowSolar;
 int pumpSpeed = 0;
 int heater = 0;
 
-unsigned long timeSensePrev = 0.0;
+float tSolarStartDelta = 20.0;
+
+unsigned long timeSensePrev = 0;
 unsigned long timePumpStart = -60*60000;
 unsigned long senseInterval = 1000;
+unsigned long timeLastInput = 0;
 
 int selected = 0;
 
@@ -552,13 +572,19 @@ void setup(void) {
 
   server.begin();
   Serial.println("HTTP server started");
+
+  lcd.clear();
 }
 
 void loop(void) {
   if (safeMode) return;
 
+  unsigned long currentMillis = millis();
+
   if (input.buttonClick) {
     input.buttonClick = false;
+    timeLastInput = currentMillis;
+    lcd.backlight();
     selected++;
     if (selected == 4) selected = 0;
     lcd.setCursor(0, 1);
@@ -580,13 +606,15 @@ void loop(void) {
       input.encoder = 0;
       break;
     }
-    lcd.setCursor(0, 2);
-    lcd.print(input.encoder);
+    lcd.setCursor(0, 2); lcd.print("        ");
+    lcd.setCursor(0, 2); lcd.print(input.encoder);
     Serial.println("Button pressed");
   }
   if (input.encoderChanged) {
     Serial.println(input.encoder);
     input.encoderChanged = false;
+    timeLastInput = currentMillis;
+    lcd.backlight();
     lcd.setCursor(0, 2); lcd.print("        ");
     lcd.setCursor(0, 2);
     if (selected == 0) {
@@ -653,13 +681,18 @@ void loop(void) {
     }
   }
 
-  unsigned long currentMillis = millis();
+  currentMillis = millis();
 
   if (currentMillis > timeSensePrev + senseInterval - DS_delay) {
     tempSensors.requestTemperatures(); // Request the temperature from the sensor (it takes some time to read it)
   }
 
   if (currentMillis > timeSensePrev + senseInterval) {
+
+    if (currentMillis > timeLastInput + 30000) {
+      lcd.noBacklight();
+    }
+
     timeSensePrev = currentMillis;
     uint16_t val = pt100.readRTD();
     uint8_t fault = pt100.readFault();
@@ -677,7 +710,7 @@ void loop(void) {
     sensors.tSolarFrom    = tempSensors.getTempC(thermo.tSolarFrom);
     sensors.tSolarTo      = tempSensors.getTempC(thermo.tSolarTo);
     sensors.tTapWater     = tempSensors.getTempC(thermo.tTapWater);
-    if (pumpSpeed == 0 && sensors.tSolar > sensors.tBoilerMiddle + 10 &&
+    if (pumpSpeed == 0 && sensors.tSolar > sensors.tBoilerMiddle + tSolarStartDelta &&
         currentMillis - timePumpStart > 10*60000) {
       setPumpSpeed(80);
       timePumpStart = currentMillis;
@@ -695,37 +728,6 @@ void loop(void) {
     Serial.print("tSolarTo:      "); Serial.println(sensors.tSolarTo);
     Serial.print("tTapWater:     "); Serial.println(sensors.tTapWater);
 
-    events.send("tBoilerTop:" + String(sensors.tBoilerTop, 1) +
-              ",tBoilerMiddle:" + String(sensors.tBoilerMiddle, 1) +
-              ",tBoilerBottom:" + String(sensors.tBoilerBottom, 1) +
-              ",tSolarFrom:" + String(sensors.tSolarFrom, 1) +
-              ",tSolarTo:" + String(sensors.tSolarTo, 1) +
-              ",tSolar:" + String(sensors.tSolar, 1) +
-              ",tTapWater:" + String(sensors.tTapWater, 1) +
-              ",heater:" + String(heater) +
-              ",pump:" + String(pumpSpeed)
-    );
-//      ----------------------
-//      |       <-75°  '⌝___ |
-//      |         ⌜-75°-|65°||
-//      |        86° 12`|36°||
-//      |         ⌞-32°-|23°||
-//      ----------------------
-    lcd.setCursor(8, 0); lcd.print("\10  \6  \7\2___ ");
-    lcd.setCursor(8, 1); lcd.print(" \1---\6-\5  \6\5");
-    lcd.setCursor(8, 2); lcd.print("  \6   \7\5  \6\5");
-    lcd.setCursor(8, 3); lcd.print(" \3---\6-\5  \6\5");
-    lcd.setCursor(9, 0); lcd.print(int(0.5f+sensors.tTapWater));
-    lcd.setCursor(12+(flowWater.count<10), 0); lcd.print(flowWater.count);
-    lcd.setCursor(11, 1); lcd.print(int(0.5f+sensors.tSolarFrom));
-    lcd.setCursor(16, 1); lcd.print(int(0.5f+sensors.tBoilerTop));
-    lcd.setCursor(8, 2); lcd.print(int(0.5f+sensors.tSolar));
-    // lcd.setCursor(5, 2); lcd.print((sensors.tSolar));
-    lcd.setCursor(12+(flowSolar.count<10), 2); lcd.print(flowSolar.count);
-    lcd.setCursor(16, 2); lcd.print(int(0.5f+sensors.tBoilerMiddle));
-    lcd.setCursor(11, 3); lcd.print(int(0.5f+sensors.tSolarTo));
-    lcd.setCursor(16, 3); lcd.print(int(0.5f+sensors.tBoilerBottom));
-
     if (flowSolar.calcAndReset())
       events.send("flowSolarMean:" + String(flowSolar.mean) +
                 ",flowSolarMin:" + String(flowSolar.mind) +
@@ -738,11 +740,42 @@ void loop(void) {
                 ",flowWaterMax:" + String(flowWater.maxd) +
                 ",flowWaterStd:" + String(flowWater.std, 2)
       );
-    // lcd.print("i"); lcd.print(flowSolar.mind);
-    // lcd.print("a"); lcd.print(flowSolar.maxd);
-    // lcd.print("d"); lcd.print(flowSolar.std);
-    // lcd.print(","); lcd.print(flowWater.mean);
-    // lcd.print(","); lcd.print(flowWater.std);
+
+    events.send("tBoilerTop:" + String(sensors.tBoilerTop, 1) +
+              ",tBoilerMiddle:" + String(sensors.tBoilerMiddle, 1) +
+              ",tBoilerBottom:" + String(sensors.tBoilerBottom, 1) +
+              ",tSolarFrom:" + String(sensors.tSolarFrom, 1) +
+              ",tSolarTo:" + String(sensors.tSolarTo, 1) +
+              ",tSolar:" + String(sensors.tSolar, 1) +
+              ",tTapWater:" + String(sensors.tTapWater, 1) +
+              ",flowWaterTotal:" + String((float)flowWater.uliter/1000000, 3) +
+              ",flowWater:" + String(flowWater.lpm, 2) +
+              ",flowSolarTotal:" + String((float)flowSolar.uliter/1000000, 3) +
+              ",flowSolar:" + String(flowSolar.lpm, 2) +
+              ",heater:" + String(heater) +
+              ",pump:" + String(pumpSpeed)
+    );
+
+//      ----------------------
+//      |       ←75°   '┐___ |
+//      |         ┌─75°─│65°│|
+//      |        86° 12'│36°│|
+//      |         └─32°─│23°│|
+//      ----------------------
+    lcd.setCursor(7, 0); lcd.print("\10  \6   \7\2___ ");
+    lcd.setCursor(8, 1); lcd.print(" \1---\6-\5  \6\5");
+    lcd.setCursor(8, 2); lcd.print("  \6   \7\5  \6\5");
+    lcd.setCursor(8, 3); lcd.print(" \3---\6-\5  \6\5");
+    lcd.setCursor(8, 0); lcd.print(int(0.5f+sensors.tTapWater));
+    lcd.setCursor(11, 0); lcd.print(flowWater.lpm, 1);
+    lcd.setCursor(11, 1); lcd.print(int(0.5f+sensors.tSolarFrom));
+    lcd.setCursor(16, 1); lcd.print(int(0.5f+sensors.tBoilerTop));
+    lcd.setCursor(8, 2); lcd.print(int(0.5f+sensors.tSolar));
+    lcd.setCursor(11, 2); lcd.print(flowSolar.lpm, 1);
+    lcd.setCursor(16, 2); lcd.print(int(0.5f+sensors.tBoilerMiddle));
+    lcd.setCursor(11, 3); lcd.print(int(0.5f+sensors.tSolarTo));
+    lcd.setCursor(16, 3); lcd.print(int(0.5f+sensors.tBoilerBottom));
+
     // tempSensors.begin();
     // if (tempSensors.getDeviceCount())
     //   printAddress(0);
