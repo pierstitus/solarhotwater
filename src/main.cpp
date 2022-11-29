@@ -2,6 +2,7 @@
 
 #include <FS.h>
 #include <SPIFFS.h>
+#include <SD.h>
 #include <WiFi.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
@@ -19,6 +20,14 @@
 
 #include "localconfig.h"
 
+#define USE_NTP
+
+#ifdef USE_NTP
+#include <time.h>
+#endif
+
+#define LOGFS SD
+
 #ifndef SRC_REVISION
 #define SRC_REVISION "unversioned"
 #endif
@@ -29,16 +38,22 @@
 #define PIN_I2C_SCL 22
 #define PIN_I2C_SDA 21
 
-// SPI MAX31865 PT100 amplifier, default SPI pins
-#define PIN_PT100_CS 5
+// SD card, default SPI pins
+#define PIN_SD_CS 5
 #define PIN_SPI_SCK 18
 #define PIN_SPI_MISO 19
 #define PIN_SPI_MOSI 23
 
+// SPI MAX31865 PT100 amplifier, software SPI
+#define PIN_PT100_CS 17
+#define PIN_PT100_SCK 0
+#define PIN_PT100_MISO 4
+#define PIN_PT100_MOSI 16
+
 // Rotary encoder
-#define PIN_ROTARY_ENCODER_CLK 17
-#define PIN_ROTARY_ENCODER_DATA 16
-#define PIN_ROTARY_ENCODER_BUTTON 4
+#define PIN_ROTARY_ENCODER_CLK 34
+#define PIN_ROTARY_ENCODER_DATA 35
+#define PIN_ROTARY_ENCODER_BUTTON 2
 
 // Relays
 #define PIN_HEATER_300 25
@@ -59,6 +74,9 @@
 #define relayOff(pin) digitalWrite(pin, HIGH)
 
 #define pow2(x) ((x)<<1)
+
+#define ONE_MINUTE 60000L // one minute in milliseconds
+#define ONE_HOUR 3600000L // one hour in milliseconds
 
 const char* ssid = STA_SSID;
 const char* password = STA_PASSWORD;
@@ -101,7 +119,7 @@ void printAddress(int index)
 }
 
 // pt100 temperature sensor in solar collector
-Adafruit_MAX31865 pt100 = Adafruit_MAX31865(PIN_PT100_CS);
+Adafruit_MAX31865 pt100 = Adafruit_MAX31865(PIN_PT100_CS, PIN_PT100_MOSI, PIN_PT100_MISO, PIN_PT100_SCK);
 // The value of the Rref resistor. Use 430.0 for PT100 and 4300.0 for PT1000
 #define RREF      430.0
 // The 'nominal' 0-degrees-C resistance of the sensor
@@ -213,10 +231,10 @@ struct {
 
 class FlowMeter {
   public:
-  volatile uint32_t uliter;
+  volatile uint64_t uliter;
   volatile uint32_t lastTime;
   uint32_t ml;
-  uint32_t prevuliter;
+  uint64_t prevuliter;
   uint32_t prevTime;
   float lpm;
   volatile uint32_t count;
@@ -299,6 +317,15 @@ unsigned long timeSensePrev = 0;
 unsigned long timePumpStart = -60*60000;
 unsigned long senseInterval = 1000;
 unsigned long timeLastInput = 0;
+unsigned long timeLastLog = 0;
+
+bool logNow = false;
+unsigned long lastLog = 0;
+int logInterval = 5 * ONE_MINUTE;
+int fastLogInterval = 1000;
+
+const int maxLogSize = 600*1024;
+const int minFreeSpace = 100*1024;
 
 int selected = 0;
 
@@ -423,6 +450,87 @@ void WiFiStationDisconnected(WiFiEvent_t event, WiFiEventInfo_t info){
   WiFi.reconnect();
 }
 
+#ifdef USE_NTP
+const char* ntpServer = "pool.ntp.org";
+const long  gmtOffset_sec = 3600;
+const int   daylightOffset_sec = 3600;
+#endif
+
+bool initSDCard(){
+  if(!SD.begin(PIN_SD_CS)){
+    Serial.println("Card Mount Failed");
+    return false;
+  }
+  uint8_t cardType = SD.cardType();
+
+  if(cardType == CARD_NONE){
+    Serial.println("No SD card attached");
+    return false;
+  }
+  Serial.print("SD Card Type: ");
+  if(cardType == CARD_MMC){
+    Serial.println("MMC");
+  } else if(cardType == CARD_SD){
+    Serial.println("SDSC");
+  } else if(cardType == CARD_SDHC){
+    Serial.println("SDHC");
+  } else {
+    Serial.println("UNKNOWN");
+  }
+  uint64_t cardSize = SD.cardSize() / (1000 * 1000);
+  Serial.printf("SD Card Size: %lluMB\n", cardSize);
+  return true;
+}
+
+bool writeLog(void) {
+
+  struct tm timeinfo;
+  if(!getLocalTime(&timeinfo)){
+    Serial.println("Failed to obtain time");
+    return false;
+  }
+  // Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
+  // Serial.println(&timeinfo, "%Y-%m-%dT%H:%M:%S");
+
+  char logFileName[20];
+  strftime(logFileName, sizeof(logFileName), "/%Y%m%d.csv", &timeinfo);
+
+  File logFile = LOGFS.open(logFileName, "a"); // Write the time and the temperature to the csv file
+  // if (logFile.size() > maxLogSize) {
+  //   logFile.close();
+  //   LOGFS.remove("/log-2.csv");
+  //   LOGFS.rename("/log-1.csv", "/log-2.csv");
+  //   LOGFS.rename("/log.csv", "/log-1.csv");
+  //   logFile = LOGFS.open("/log.csv", "a");
+  // }
+  if (logFile.size() == 0) {
+    logFile.println("time,tBoilerTop,tBoilerMiddle,tBoilerBottom,tSolarFrom,tSolarTo,tSolar,tTapWater,flowWaterTotal,flowWater,flowSolarTotal,flowSolar,heater,pump");
+  }
+  // FSInfo fs_info;
+  // LOGFS.info(fs_info);
+  if (logFile.size() <= maxLogSize && LOGFS.totalBytes() - LOGFS.usedBytes() > minFreeSpace) {
+
+    logFile.print(&timeinfo, "%H:%M:%S,");
+    // logFile.printf("%ld,%.1f,%.0f,%.1f,%.1f,%d\n", actualTime, temp, weerstandAvg, 10*heaterAvg, 10*airpumpAvg, brilOpen);
+
+    logFile.println(String(sensors.tBoilerTop, 1) +
+            "," + String(sensors.tBoilerMiddle, 1) +
+            "," + String(sensors.tBoilerBottom, 1) +
+            "," + String(sensors.tSolarFrom, 1) +
+            "," + String(sensors.tSolarTo, 1) +
+            "," + String(sensors.tSolar, 1) +
+            "," + String(sensors.tTapWater, 1) +
+            "," + String((float)flowWater.uliter/1000000, 2) +
+            "," + String(flowWater.lpm, 2) +
+            "," + String((float)flowSolar.uliter/1000000, 2) +
+            "," + String(flowSolar.lpm, 2) +
+            "," + String(heater) +
+            "," + String(pumpSpeed));
+  }
+  logFile.close();
+  return true;
+}
+
 void setup(void) {
   Serial.begin(115200);
   Serial.print("Zonneboiler version ");
@@ -478,7 +586,12 @@ void setup(void) {
     return;
   }
 
+#ifdef USE_NTP
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+#endif
+
   SPIFFS.begin();                             // Start the SPI Flash File System (SPIFFS)
+  initSDCard();
 
   lcd.createChar(1, char_topleft);
   lcd.createChar(2, char_topright);
@@ -555,6 +668,53 @@ void setup(void) {
     request->send(200, "text/plain", info);
   });
 
+  server.on("/sd.dir", HTTP_GET, [](AsyncWebServerRequest *request) {
+    String info = "SD Card Type: ";
+
+    uint8_t cardType = SD.cardType();
+    if (cardType == CARD_NONE) {
+      info += "No SD card attached";
+    } else {
+      if(cardType == CARD_MMC){
+        info += "MMC\n";
+      } else if(cardType == CARD_SD){
+        info += "SDSC\n";
+      } else if(cardType == CARD_SDHC){
+        info += "SDHC\n";
+      } else {
+        info += "UNKNOWN\n";
+      }
+      uint64_t cardSize = SD.cardSize() / (1000 * 1000);
+      info += "SD Card Size: " + String(cardSize) + "MB\n";
+      info += "\nSD card contents:\n";
+      File dir = SD.open("/");
+      while (true) {
+        File entry = dir.openNextFile();
+        if (! entry) {
+          // no more files
+          break;
+        }
+        info += entry.name();
+        if (entry.isDirectory()) {
+          info += "/\n";
+          // printDirectory(entry, numTabs + 1);
+        } else {
+          // files have sizes, directories do not
+          info += "\t" + String(entry.size()) + "\n";
+        }
+        entry.close();
+      }
+      // Dir dir = SD.openDir("/");
+      // while (dir.next()) {                      // List the file system contents
+      //   info += dir.fileName() + "\t" + String(dir.fileSize())  + "B\n"
+      //   // Serial.printf("\tFS File: %s, size: %s\r\n", fileName.c_str(), formatBytes(fileSize).c_str());
+      // }
+    }
+    request->send(200, "text/plain", info);
+  });
+
+  // server.on()
+
   server.serveStatic("/generate_204", SPIFFS, "/index.html"); //Android captive portal. Maybe not needed. Might be handled by notFound handler.
   server.serveStatic("/fwlink", SPIFFS, "/index.html"); //Microsoft captive portal. Maybe not needed. Might be handled by notFound handler.
 
@@ -567,7 +727,7 @@ void setup(void) {
   server.addHandler(&events);
 
   server.addHandler(new SPIFFSEditor(SPIFFS, "Zonneboiler", "password"));
-
+  server.serveStatic("/sd/", SD, "/");
   server.serveStatic("/", SPIFFS, "/").setDefaultFile("index.html");
 
   server.begin();
@@ -757,11 +917,12 @@ void loop(void) {
     );
 
 //      ----------------------
-//      |       ←75°   '┐___ |
+//      |       ←75°1.2'┐___ |
 //      |         ┌─75°─│65°│|
-//      |        86° 12'│36°│|
+//      |        86°0.8'│36°│|
 //      |         └─32°─│23°│|
 //      ----------------------
+// (' = l/m)
     lcd.setCursor(7, 0); lcd.print("\10  \6   \7\2___ ");
     lcd.setCursor(8, 1); lcd.print(" \1---\6-\5  \6\5");
     lcd.setCursor(8, 2); lcd.print("  \6   \7\5  \6\5");
@@ -775,6 +936,21 @@ void loop(void) {
     lcd.setCursor(16, 2); lcd.print(int(0.5f+sensors.tBoilerMiddle));
     lcd.setCursor(11, 3); lcd.print(int(0.5f+sensors.tSolarTo));
     lcd.setCursor(16, 3); lcd.print(int(0.5f+sensors.tBoilerBottom));
+
+    if (flowWater.lpm > 0 || currentMillis - timePumpStart < 5 * ONE_MINUTE) {
+      if (currentMillis - timeLastLog > fastLogInterval) {
+        logNow = true;
+      }
+    }
+
+    if (currentMillis - timeLastLog > logInterval) {
+      logNow = true;
+    }
+
+    if (logNow && writeLog()) {
+      logNow = false;
+      timeLastLog = currentMillis;
+    }
 
     // tempSensors.begin();
     // if (tempSensors.getDeviceCount())
