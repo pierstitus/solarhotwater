@@ -104,18 +104,20 @@
     </div>
     <div id="control">
       <h2>Control</h2>
-      Pompsnelheid: <input type="text" class="value" id="control_speed" value=""/>%<br/>
-      <input type="button" id="set_pump" value="Pomp aan"/>
-      <input type="button" id="set_pump_off" value="Pomp uit"/>
-      <input type="button" id="control_programma" value="programma"/>
+      <p>
+        <input type="button" id="set_heater_douche" value="Heater douche"/>(40l van 40°C)<br/>
+        <input type="button" id="set_heater_bad" value="Heater bad"/>(100l van 60°C)<br/>
+        <input type="button" id="set_heater_off" value="Heater uit"/>
+      </p><p>
+        <input type="button" id="set_pump" value="Pomp aan"/>
+        <input type="text" class="value" id="control_speed" value="80"/>%<br/>
+        <input type="button" id="set_pump_off" value="Pomp uit"/>
+      </p>
     </div>
     <div id="config">
       <h2>Settings</h2>
       <form id="config_form" method="post" style="margin: 0px auto 8px auto" >
-        Vakantiemodus na: <input type="text" class="num" name="vakantieTijd" id="vakantieTijd"/> uur.<br/>
         Log interval: <input type="text" class="num" name="logInterval" id="logInterval"/> s.<br/>
-        Motor reactie P: <input type="text" class="num" name="speedControlP" id="speedControlP"/><br/>
-        Richting afwisselen: <input type="checkbox" name="richtingAfwisselen" id="richtingAfwisselen"/>
       </form>
     </div>
   </center>
@@ -174,19 +176,27 @@
         console.log(e);
         document.getElementById("statusline").innerHTML = 'WebSocket connection closed';
       };
-      var cl = document.getElementById("set_pump");
-      var cr = document.getElementById("set_pump_off");
-      var cp = document.getElementById("control_programma");
-      cl.onmouseup = cl.ontouchend = cl.ontouchstart = function(e) {
+      var el;
+      el = document.getElementById("set_heater_douche");
+      el.onmouseup = el.ontouchend = function(e) {
+        connection.send("H2");
+      }
+      el = document.getElementById("set_heater_bad");
+      el.onmouseup = el.ontouchend = function(e) {
+        connection.send("H4");
+      }
+      el = document.getElementById("set_heater_off");
+      el.onmouseup = el.ontouchend = function(e) {
+        connection.send("H0");
+      }
+      el = document.getElementById("set_pump");
+      el.onmouseup = el.ontouchend = function(e) {
         connection.send("P" + document.getElementById("control_speed").value);
         //e.preventDefault();
       }
-      cr.onmouseup = cr.ontouchend = function(e) {
+      el = document.getElementById("set_pump_off");
+      el.onmouseup = el.ontouchend = function(e) {
         connection.send("P0");
-        //e.preventDefault();
-      }
-      cp.onmouseup = cp.ontouchend = function(e) {
-        connection.send("PP");
         //e.preventDefault();
       }
     }

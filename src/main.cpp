@@ -310,6 +310,7 @@ FlowMeter flowWater, flowSolar;
 
 int pumpSpeed = 0;
 int heater = 0;
+bool backlight = false;
 
 float tSolarStartDelta = 20.0;
 
@@ -406,6 +407,34 @@ void setPumpSpeed(int speed) {
   }
 }
 
+const char *HEATER_TEXT[] = { "off  ", " 300W", " 800W", "800+300W", "1500W", "1500+300W", "1500+800W", "2600W"};
+const int HEATER_WATT[] = {0, 300, 800, 800+300, 1500, 1500+300, 1500+3800, 1500+800+300};
+
+void setHeater(int heat) {
+  heater = heat;
+  logNow = true;
+  if (heater & 1) {
+    relayOn(PIN_HEATER_300);
+  } else {
+    relayOff(PIN_HEATER_300);
+  }
+  if (heater & 2) {
+    relayOn(PIN_HEATER_800);
+  } else {
+    relayOff(PIN_HEATER_800);
+  }
+  if (heater & 4) {
+    relayOn(PIN_HEATER_1500);
+  } else {
+    relayOff(PIN_HEATER_1500);
+  }
+}
+
+void setBacklight(bool bl) {
+  backlight = bl;
+  lcd.setBacklight(bl);
+}
+
 void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventType type, void * arg, uint8_t *data, size_t len){
   if (type == WS_EVT_CONNECT) {
     Serial.printf("ws[%s][%u] connect\n", server->url(), client->id());
@@ -434,6 +463,13 @@ void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventT
               setPumpSpeed(s);
               timePumpStart = millis();
             }
+          }
+        }
+        if (data[0] == 'H' && len == 2) {            // pump control
+          if (data[1] >= '0' && data[1] <= '6') {
+            int s = String((char*)&data[1]).toInt();
+            Serial.println(s);
+            setHeater(s);
           }
         }
       }
@@ -524,7 +560,7 @@ bool writeLog(void) {
             "," + String(flowWater.lpm, 2) +
             "," + String((float)flowSolar.uliter/1000000, 2) +
             "," + String(flowSolar.lpm, 2) +
-            "," + String(heater) +
+            "," + String(HEATER_WATT[heater]) +
             "," + String(pumpSpeed));
   }
   logFile.close();
@@ -545,7 +581,7 @@ void setup(void) {
 
   lcd.init();
   // Print a message to the LCD.
-  lcd.backlight();
+  setBacklight(true);
   lcd.setCursor(3,0); lcd.print("Zonneboiler");
   lcd.setCursor(1,1); lcd.print(SRC_REVISION);
 
@@ -616,11 +652,7 @@ void setup(void) {
   pinMode(PIN_HEATER_1500, OUTPUT_OPEN_DRAIN);
   pinMode(PIN_PUMP, OUTPUT_OPEN_DRAIN);
 
-  relayOff(PIN_HEATER_300);
-  relayOff(PIN_HEATER_800);
-  relayOff(PIN_HEATER_1500);
-  relayOff(PIN_PUMP);
-
+  setHeater(0);
   setPumpSpeed(0);
 
   tempSensors.setWaitForConversion(false); // Don't block the program while the temperature sensor is reading
@@ -744,98 +776,110 @@ void loop(void) {
   if (input.buttonClick) {
     input.buttonClick = false;
     timeLastInput = currentMillis;
-    lcd.backlight();
-    selected++;
-    if (selected == 4) selected = 0;
+    if (!backlight) {
+      setBacklight(true);
+      selected = 1;
+    } else {
+      selected++;
+      if (selected == 4) selected = 0;
+    }
+    lcd.setCursor(0, 2); lcd.print("        ");
     lcd.setCursor(0, 1);
     switch (selected) {
     case 0:
       lcd.print("Pomp:  ");
       input.encoder = pumpSpeed;
+      lcd.setCursor(0, 2); lcd.print(input.encoder);
       break;
     case 1:
       lcd.print("Heater:");
       input.encoder = heater;
+      lcd.setCursor(0, 2); lcd.print(HEATER_TEXT[heater]);
       break;
     case 2:
       lcd.print("RTD:   ");
       input.encoder = RTDoffset;
+      lcd.setCursor(0, 2); lcd.print(input.encoder);
       break;
     case 3:
       lcd.print("Reset:   ");
       input.encoder = 0;
+      lcd.setCursor(0, 2); lcd.print("no");
       break;
     }
-    lcd.setCursor(0, 2); lcd.print("        ");
-    lcd.setCursor(0, 2); lcd.print(input.encoder);
     Serial.println("Button pressed");
   }
   if (input.encoderChanged) {
     Serial.println(input.encoder);
     input.encoderChanged = false;
     timeLastInput = currentMillis;
-    lcd.backlight();
-    lcd.setCursor(0, 2); lcd.print("        ");
-    lcd.setCursor(0, 2);
-    if (selected == 0) {
-      int val = constrain(input.encoder, 0, 100);
-      input.encoder = val;
-      setPumpSpeed(val);
-      timePumpStart = millis();
-      lcd.print(val);
-    } else if (selected == 1) {
-      int val = constrain(input.encoder, 0, 3);
-      heater = input.encoder = val;
-      switch (val) {
-        case 0:
-          lcd.print(" off");
-          relayOff(PIN_HEATER_300);
-          relayOff(PIN_HEATER_800);
-          relayOff(PIN_HEATER_1500);
-          break;
-        case 1:
-          lcd.print(" 300W");
-          relayOn(PIN_HEATER_300);
-          relayOff(PIN_HEATER_800);
-          relayOff(PIN_HEATER_1500);
-          break;
-        case 2:
-          lcd.print(" 800W");
-          relayOff(PIN_HEATER_300);
-          relayOn(PIN_HEATER_800);
-          relayOff(PIN_HEATER_1500);
-          break;
-        case 3:
-          lcd.print("1500W");
-          relayOff(PIN_HEATER_300);
-          relayOff(PIN_HEATER_800);
-          relayOn(PIN_HEATER_1500);
-          break;
-      }
-    } else if (selected == 2) {
-      int val = input.encoder;
-      RTDoffset = val;
-      lcd.print(val);
-    } else if (selected == 3) {
-      int val = constrain(input.encoder, 0, 1);
-      input.encoder = val;
-      if (val) {
-        lcd.print("yes");
-        for (int n=1; n<1000; n++) {
-          delay(1);
-          if (input.encoder < 1) break;
+    if (!backlight) {
+      setBacklight(true);
+    } else {
+      lcd.setCursor(0, 2); lcd.print("        ");
+      lcd.setCursor(0, 2);
+      if (selected == 0) {
+        int val = constrain(input.encoder, 0, 100);
+        input.encoder = val;
+        setPumpSpeed(val);
+        timePumpStart = millis();
+        lcd.print(val);
+      } else if (selected == 1) {
+        int val = constrain(input.encoder, 0, 3);
+        input.encoder = val;
+        setHeater((1<<val)>>1);
+        lcd.print(HEATER_TEXT[heater]);
+        // switch (val) {
+        //   case 0:
+        //     lcd.print(" off");
+        //     relayOff(PIN_HEATER_300);
+        //     relayOff(PIN_HEATER_800);
+        //     relayOff(PIN_HEATER_1500);
+        //     break;
+        //   case 1:
+        //     lcd.print(" 300W");
+        //     relayOn(PIN_HEATER_300);
+        //     relayOff(PIN_HEATER_800);
+        //     relayOff(PIN_HEATER_1500);
+        //     break;
+        //   case 2:
+        //     lcd.print(" 800W");
+        //     relayOff(PIN_HEATER_300);
+        //     relayOn(PIN_HEATER_800);
+        //     relayOff(PIN_HEATER_1500);
+        //     break;
+        //   case 3:
+        //     lcd.print("1500W");
+        //     relayOff(PIN_HEATER_300);
+        //     relayOff(PIN_HEATER_800);
+        //     relayOn(PIN_HEATER_1500);
+        //     break;
+        // }
+      } else if (selected == 2) {
+        int val = input.encoder;
+        RTDoffset = val;
+        lcd.print(val);
+      } else if (selected == 3) {
+        int val = constrain(input.encoder, 0, 1);
+        input.encoder = val;
+        if (val) {
+          lcd.print("yes");
+          for (int n=1; n<1000; n++) {
+            delay(1);
+            if (input.encoder < 1) break;
+          }
+          if (input.encoder > 0) {
+            ESP.restart();
+          }
+        } else {
+          lcd.print("no ");
         }
-        if (input.encoder > 0) {
-          ESP.restart();
-        }
-      } else {
-        lcd.print("no");
-      }
-      for (int n = 0; n < 4; n++) {
-        lcd.setCursor(0, n); lcd.print(val + n, HEX);
-        lcd.setCursor(3, n);
-        for (int x = 0; x < 16; x++) {
-          lcd.write((val+n)*16 + x);
+        for (int n = 0; n < 4; n++) {
+          lcd.setCursor(0, n); lcd.print(val + n, HEX);
+          lcd.setCursor(3, n);
+          for (int x = 0; x < 16; x++) {
+            lcd.write((val+n)*16 + x);
+          }
         }
       }
     }
@@ -849,8 +893,8 @@ void loop(void) {
 
   if (currentMillis > timeSensePrev + senseInterval) {
 
-    if (currentMillis > timeLastInput + 30000) {
-      lcd.noBacklight();
+    if (backlight && currentMillis > timeLastInput + 30000) {
+      setBacklight(false);
     }
 
     timeSensePrev = currentMillis;
@@ -870,16 +914,31 @@ void loop(void) {
     sensors.tSolarFrom    = tempSensors.getTempC(thermo.tSolarFrom);
     sensors.tSolarTo      = tempSensors.getTempC(thermo.tSolarTo);
     sensors.tTapWater     = tempSensors.getTempC(thermo.tTapWater);
-    if (pumpSpeed == 0 && sensors.tSolar > sensors.tBoilerMiddle + tSolarStartDelta &&
-        currentMillis - timePumpStart > 10*60000) {
+    if (pumpSpeed == 0
+        && sensors.tSolar > sensors.tBoilerMiddle + tSolarStartDelta
+        && currentMillis - timePumpStart > 10*60000
+        && sensors.tBoilerMiddle < 90) {
       setPumpSpeed(80);
       timePumpStart = currentMillis;
     }
-    if (currentMillis - timePumpStart > 30000 && pumpSpeed > 50) {
+    if (pumpSpeed > 50 && currentMillis - timePumpStart > 30000) {
       setPumpSpeed(8);
     }
-    if (currentMillis - timePumpStart > 5*60000 && sensors.tSolarFrom < sensors.tSolarTo) {
+    if (pumpSpeed > 0
+        && ((currentMillis - timePumpStart > 5*60000
+             && sensors.tSolarFrom < sensors.tSolarTo)
+            || sensors.tBoilerMiddle > 90)) {
       setPumpSpeed(0);
+    }
+
+    if (heater && (sensors.tBoilerTop > 80 || sensors.tBoilerTop > 80)) {
+      setHeater(0);
+    }
+    if ((heater & 2) && sensors.tBoilerTop > 40) {
+      setHeater(0);
+    }
+    if ((heater & 5) && sensors.tBoilerMiddle > 50) {
+      setHeater(0);
     }
     Serial.print("tBoilerTop:    "); Serial.println(sensors.tBoilerTop);
     Serial.print("tBoilerMiddle: "); Serial.println(sensors.tBoilerMiddle);
@@ -912,7 +971,7 @@ void loop(void) {
               ",flowWater:" + String(flowWater.lpm, 2) +
               ",flowSolarTotal:" + String((float)flowSolar.uliter/1000000, 3) +
               ",flowSolar:" + String(flowSolar.lpm, 2) +
-              ",heater:" + String(heater) +
+              ",heater:" + String(HEATER_WATT[heater]) +
               ",pump:" + String(pumpSpeed)
     );
 
