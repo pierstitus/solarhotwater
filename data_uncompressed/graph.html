@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<html>
+<head>
+<!-- Plotly.js -->
+<!-- <script src='https://cdn.plot.ly/plotly-2.8.3.min.js'></script> -->
+<script src='https://cdn.plot.ly/plotly-basic-2.8.3.min.js'></script>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+const format_full = d3.timeFormat("%Y%m%d.csv");
+const format_prefix = d3.timeFormat("%Y-%m-%d ");
+
+const plot1_status = {
+  autoscroll: true,
+  xrange: 12*60*60,
+}
+
+const plot_values = [
+  "tBoilerTop",
+  "tBoilerMiddle",
+  "tBoilerBottom",
+  "tSolarFrom",
+  "tSolarTo",
+  "tSolar",
+  "tTapWater",
+  // "flowWaterTotal",
+  "flowWater",
+  // "flowSolarTotal",
+  "flowSolar",
+  // "heater",
+  "pump",
+]
+const plot_numbers = [...Array(plot_values.length).keys()];
+
+async function loadPlot1(date) {
+  var date_prefix = format_prefix(date);
+  var filename = "sd/" + format_full(date);
+  console.log("loading " + filename);
+  return d3.csv(filename, function(d) {
+    var p = {date: d3.timeParse("%Y-%m-%d %H:%M:%S")(date_prefix + d.time)};
+    for (n of plot_values) {
+      p[n] = +d[n];
+    }
+    return p;
+  }).then(function(rows) {
+
+    function unpack(rows, key) {
+      return rows.map(function(row) { return row[key]; });
+    }
+
+    var date = unpack(rows, 'date');
+
+    var x = [];
+    var y = [];
+    for (n of plot_values) {
+      x.push(date);
+      y.push(unpack(rows, n));
+    }
+    console.log({x:x, y:y});
+    Plotly.extendTraces('plot1', {
+      x: x,
+      y: y,
+    }, plot_numbers);
+  })
+}
+
+window.onload = async function() {
+
+  var traces = [];
+  for (n of plot_values) {
+    traces.push({
+      type: 'scatter',
+      mode: 'lines',
+      name: n,
+      x: [],
+      y: [],
+      // line: {color: '#CFBE17'}
+    });
+  }
+
+  var layout = {
+    title: 'Zonneboiler',
+    xaxis: {
+      autorange: true,
+      rangeslider: {
+        autorange: true,
+      },
+      type: 'date'
+    },
+    yaxis: {
+      autorange: true,
+      range: [0, 100],
+      type: 'linear'
+    },
+    dragmode: 'pan',
+  };
+
+  var config = {
+    displayModeBar: true,
+    scrollZoom: true,
+    // displaylogo: false,
+    modeBarButtonsToRemove: ['autoScale2d', 'resetScale2d'],//  ['zoom2d', 'pan2d', 'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d']
+    modeBarButtonsToAdd: [
+      {
+        name: 'Reset axes',
+        icon: Plotly.Icons.home,
+        click: function(gd) {
+          Plotly.relayout(gd, {"yaxis.autorange": true, 'autoscroll': true});
+        },
+      },
+    ],
+  }
+
+  Plotly.newPlot('plot1', traces, layout, config);
+
+  document.getElementById('plot1').on('plotly_relayout', function(eventdata){
+    // detect manual layout changes and stop/start autoscroll
+    if (eventdata['autoscroll'] || eventdata['xaxis.autorange']) {
+      plot1_status.autoscroll = true;
+    } else {
+      plot1_status.autoscroll = false;
+    }
+  })
+
+  try {
+    var date = new Date();
+    date.setDate(date.getDate() - 2);
+    await loadPlot1(date);
+    date.setDate(date.getDate() + 1);
+    await loadPlot1(date);
+    date.setDate(date.getDate() + 1);
+    await loadPlot1(date);
+  } catch(e) {
+    console.log(e);
+  }
+
+  events = new EventSource('/events');
+  events.addEventListener('console', function(e) {console.log(e.data);});
+  events.onmessage = function (e) {
+    lastMessage = new Date().getTime();
+    var values = e.data.split(",");
+    var data = {};
+    for (n in values) {
+      var v = values[n].split(":", 2);
+      var element = document.getElementById(v[0]);
+      if (element) {
+        element.innerHTML = v[1];
+        data[v[0]] = v[1];
+      } else if (v[0] == "c") {
+        console.log(v[1]);
+      } else {
+        console.log('Unknown message: ', values[n]);
+      }
+    }
+    try {
+      var date = new Date();
+      var x = [];
+      var y = [];
+      for (n of plot_values) {
+        x.push([date]);
+        y.push([data[n]]);
+      }
+      Plotly.extendTraces('plot1', {
+        x: x,
+        y: y,
+      }, plot_numbers);
+      if (plot1_status.autoscroll) {
+        var start = new Date(date);
+        start.setSeconds(start.getSeconds() - plot1_status.xrange);
+        Plotly.relayout('plot1', {'xaxis.range': [start, date], 'autoscroll': true});
+      }
+    } catch(e) {
+      console.log(e);
+    }
+    return false;
+  };
+}
+
+</script>
+</head>
+<body>
+  <div id="plot1"></div>
+  <table>
+    <tr><td>Date</td><td id="date"></td></tr>
+    <tr><td>tBoilerTop</td><td id="tBoilerTop"></td></tr>
+    <tr><td>tBoilerMiddle</td><td id="tBoilerMiddle"></td></tr>
+    <tr><td>tBoilerBottom</td><td id="tBoilerBottom"></td></tr>
+    <tr><td>tSolar</td><td id="tSolar"></td></tr>
+    <tr><td>tSolarFrom</td><td id="tSolarFrom"></td></tr>
+    <tr><td>tSolarTo</td><td id="tSolarTo"></td></tr>
+    <tr><td>tTapWater</td><td id="tTapWater"></td></tr>
+    <tr><td>flowWater</td><td id="flowWater"></td></tr>
+    <tr><td>flowWaterTotal</td><td id="flowWaterTotal"></td></tr>
+    <tr><td>flowSolar</td><td id="flowSolar"></td></tr>
+    <tr><td>flowSolarTotal</td><td id="flowSolarTotal"></td></tr>
+    <tr><td>pump</td><td id="pump"></td></tr>
+    <tr><td>heater</td><td id="heater"></td></tr>
+  </table>
+</body>
+</html>
