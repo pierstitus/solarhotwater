@@ -12,4 +12,4 @@ done
 
 # git revision macro
 #echo -DSRC_REV=\\\"$(git rev-parse HEAD)\\\"
-echo -DSRC_REVISION=\\\"$(git --no-pager show --date=short --format="%ad" --name-only | head -n1)_$(git --no-pager describe --tags --always --dirty)\\\"
+echo -DSRC_REVISION=\\\"$(git --no-pager show --date=short --format="%ad" --name-only | head -n1)_$(git --no-pager describe --tags --always --long --dirty)\\\"

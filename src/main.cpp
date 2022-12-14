@@ -101,6 +101,8 @@ struct {
   .tTapWater     = {0x28, 0xB4, 0x23, 0x79, 0x97, 0x08, 0x03, 0x8E},
 };
 
+bool writeLog(void);
+
 // function to print a device address
 void printAddress(int index)
 {
@@ -394,6 +396,11 @@ void setPumpSpeed(int speed) {
   233-242 Hysteresis, pump starts in intervals to avoid clocking?
   243-255 Pump stops
   */
+  if (millis() - timeLastLog > fastLogInterval) {
+    writeLog();
+  }
+  logNow = true;
+
   pumpSpeed = speed;
   if (speed <= 0) {
     relayOff(PIN_PUMP);
@@ -408,11 +415,15 @@ void setPumpSpeed(int speed) {
 }
 
 const char *HEATER_TEXT[] = { "off  ", " 300W", " 800W", "800+300W", "1500W", "1500+300W", "1500+800W", "2600W"};
-const int HEATER_WATT[] = {0, 300, 800, 800+300, 1500, 1500+300, 1500+3800, 1500+800+300};
+const int HEATER_WATT[] = {0, 300, 800, 800+300, 1500, 1500+300, 1500+800, 1500+800+300};
 
 void setHeater(int heat) {
-  heater = heat;
+  if (millis() - timeLastLog > fastLogInterval) {
+    writeLog();
+  }
   logNow = true;
+
+  heater = heat;
   if (heater & 1) {
     relayOn(PIN_HEATER_300);
   } else {
@@ -519,7 +530,6 @@ bool initSDCard(){
 }
 
 bool writeLog(void) {
-
   struct tm timeinfo;
   if(!getLocalTime(&timeinfo)){
     Serial.println("Failed to obtain time");
@@ -539,12 +549,12 @@ bool writeLog(void) {
   //   LOGFS.rename("/log.csv", "/log-1.csv");
   //   logFile = LOGFS.open("/log.csv", "a");
   // }
-  if (logFile.size() == 0) {
-    logFile.println("time,tBoilerTop,tBoilerMiddle,tBoilerBottom,tSolarFrom,tSolarTo,tSolar,tTapWater,flowWaterTotal,flowWater,flowSolarTotal,flowSolar,heater,pump");
-  }
   // FSInfo fs_info;
   // LOGFS.info(fs_info);
-  if (logFile.size() <= maxLogSize && LOGFS.totalBytes() - LOGFS.usedBytes() > minFreeSpace) {
+  if (logFile.size() <= maxLogSize && (LOGFS.totalBytes() - LOGFS.usedBytes()) > minFreeSpace) {
+    if (logFile.size() == 0) {
+      logFile.println("time,tBoilerTop,tBoilerMiddle,tBoilerBottom,tSolarFrom,tSolarTo,tSolar,tTapWater,flowWaterTotal,flowWater,flowSolarTotal,flowSolar,heater,pump");
+    }
 
     logFile.print(&timeinfo, "%H:%M:%S,");
     // logFile.printf("%ld,%.1f,%.0f,%.1f,%.1f,%d\n", actualTime, temp, weerstandAvg, 10*heaterAvg, 10*airpumpAvg, brilOpen);
@@ -778,7 +788,7 @@ void loop(void) {
     timeLastInput = currentMillis;
     if (!backlight) {
       setBacklight(true);
-      selected = 1;
+      selected = 0;
     } else {
       selected++;
       if (selected == 4) selected = 0;
@@ -787,14 +797,14 @@ void loop(void) {
     lcd.setCursor(0, 1);
     switch (selected) {
     case 0:
-      lcd.print("Pomp:  ");
-      input.encoder = pumpSpeed;
-      lcd.setCursor(0, 2); lcd.print(input.encoder);
-      break;
-    case 1:
       lcd.print("Heater:");
       input.encoder = heater;
       lcd.setCursor(0, 2); lcd.print(HEATER_TEXT[heater]);
+      break;
+    case 1:
+      lcd.print("Pomp:  ");
+      input.encoder = pumpSpeed;
+      lcd.setCursor(0, 2); lcd.print(input.encoder);
       break;
     case 2:
       lcd.print("RTD:   ");
@@ -819,12 +829,6 @@ void loop(void) {
       lcd.setCursor(0, 2); lcd.print("        ");
       lcd.setCursor(0, 2);
       if (selected == 0) {
-        int val = constrain(input.encoder, 0, 100);
-        input.encoder = val;
-        setPumpSpeed(val);
-        timePumpStart = millis();
-        lcd.print(val);
-      } else if (selected == 1) {
         int val = constrain(input.encoder, 0, 3);
         input.encoder = val;
         setHeater((1<<val)>>1);
@@ -855,31 +859,32 @@ void loop(void) {
         //     relayOn(PIN_HEATER_1500);
         //     break;
         // }
+      } else if (selected == 1) {
+        int val = constrain(input.encoder, 0, 100);
+        input.encoder = val;
+        setPumpSpeed(val);
+        timePumpStart = millis();
+        lcd.print(val);
       } else if (selected == 2) {
         int val = input.encoder;
         RTDoffset = val;
         lcd.print(val);
       } else if (selected == 3) {
-        int val = constrain(input.encoder, 0, 1);
+        int val = constrain(input.encoder, 0, 10);
         input.encoder = val;
-        if (val) {
+        if (val == 5) {
           lcd.print("yes");
-          for (int n=1; n<1000; n++) {
+          for (int n=1; n<5000; n++) {
             delay(1);
-            if (input.encoder < 1) break;
+            lcd.setCursor(4, 2); lcd.print(5-n/1000);
+            if (input.encoder < 5) break;
           }
-          if (input.encoder > 0) {
+          if (input.encoder >= 5) {
             ESP.restart();
           }
         } else {
           lcd.print("no ");
-        }
-        for (int n = 0; n < 4; n++) {
-          lcd.setCursor(0, n); lcd.print(val + n, HEX);
-          lcd.setCursor(3, n);
-          for (int x = 0; x < 16; x++) {
-            lcd.write((val+n)*16 + x);
-          }
+          lcd.print(5 - val);
         }
       }
     }
@@ -960,6 +965,11 @@ void loop(void) {
                 ",flowWaterStd:" + String(flowWater.std, 2)
       );
 
+    struct tm timeinfo;
+    getLocalTime(&timeinfo);
+    char datestr[32];
+    strftime(datestr, sizeof datestr, "%Y-%m-%d %H:%M:%S", &timeinfo);
+
     events.send("tBoilerTop:" + String(sensors.tBoilerTop, 1) +
               ",tBoilerMiddle:" + String(sensors.tBoilerMiddle, 1) +
               ",tBoilerBottom:" + String(sensors.tBoilerBottom, 1) +
@@ -972,7 +982,8 @@ void loop(void) {
               ",flowSolarTotal:" + String((float)flowSolar.uliter/1000000, 3) +
               ",flowSolar:" + String(flowSolar.lpm, 2) +
               ",heater:" + String(HEATER_WATT[heater]) +
-              ",pump:" + String(pumpSpeed)
+              ",pump:" + String(pumpSpeed) +
+              ",date:" + datestr
     );
 
 //      ----------------------
@@ -996,7 +1007,7 @@ void loop(void) {
     lcd.setCursor(11, 3); lcd.print(int(0.5f+sensors.tSolarTo));
     lcd.setCursor(16, 3); lcd.print(int(0.5f+sensors.tBoilerBottom));
 
-    if (flowWater.lpm > 0 || currentMillis - timePumpStart < 5 * ONE_MINUTE) {
+    if (flowWater.lpm > 0 || currentMillis - timePumpStart < 6 * ONE_MINUTE) {
       if (currentMillis - timeLastLog > fastLogInterval) {
         logNow = true;
       }

@@ -4,7 +4,7 @@
 <head>
 <!-- Plotly.js -->
 <!-- <script src='https://cdn.plot.ly/plotly-2.8.3.min.js'></script> -->
-<script src='https://cdn.plot.ly/plotly-basic-2.8.3.min.js'></script>
+<script src='https://cdn.plot.ly/plotly-basic-2.16.1.min.js'></script>
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <script>
 const format_full = d3.timeFormat("%Y%m%d.csv");
@@ -16,36 +16,38 @@ const plot1_status = {
 }
 
 const plot_values = [
-  "tBoilerTop",
-  "tBoilerMiddle",
-  "tBoilerBottom",
-  "tSolarFrom",
-  "tSolarTo",
-  "tSolar",
-  "tTapWater",
-  // "flowWaterTotal",
-  "flowWater",
-  // "flowSolarTotal",
-  "flowSolar",
-  // "heater",
-  "pump",
+  {name: "tBoilerTop", factor: 1},
+  {name: "tBoilerMiddle", factor: 1},
+  {name: "tBoilerBottom", factor: 1},
+  {name: "tSolarFrom", factor: 1},
+  {name: "tSolarTo", factor: 1},
+  {name: "tSolar", factor: 1},
+  {name: "tTapWater", factor: 1},
+  // {name: "flowWaterTotal", factor: 1},
+  {name: "flowWater", factor: 10},
+  // {name: "flowSolarTotal", factor: 1},
+  {name: "flowSolar", factor: 10},
+  {name: "heater", factor: .01},
+  {name: "pump", factor: 1},
 ]
 const plot_numbers = [...Array(plot_values.length).keys()];
 
-async function loadPlot1(date) {
+async function loadPlot(date) {
   var date_prefix = format_prefix(date);
   var filename = "sd/" + format_full(date);
   console.log("loading " + filename);
   return d3.csv(filename, function(d) {
     var p = {date: d3.timeParse("%Y-%m-%d %H:%M:%S")(date_prefix + d.time)};
     for (n of plot_values) {
-      p[n] = +d[n];
+      p[n.name] = +d[n.name] * n.factor;
     }
     return p;
   }).then(function(rows) {
 
     function unpack(rows, key) {
-      return rows.map(function(row) { return row[key]; });
+      var column = rows.map(function(row) { return row[key]; });
+      column.push(undefined);
+      return column;
     }
 
     var date = unpack(rows, 'date');
@@ -54,10 +56,11 @@ async function loadPlot1(date) {
     var y = [];
     for (n of plot_values) {
       x.push(date);
-      y.push(unpack(rows, n));
+      y.push(unpack(rows, n.name));
     }
     console.log({x:x, y:y});
-    Plotly.extendTraces('plot1', {
+    // Plotly.extendTraces('plot1', {
+    Plotly.prependTraces('plot1', {
       x: x,
       y: y,
     }, plot_numbers);
@@ -68,13 +71,24 @@ window.onload = async function() {
 
   var traces = [];
   for (n of plot_values) {
+    var f = '';
+    if (n.factor != 1) {
+      f = '(x' + n.factor + ')';
+    }
     traces.push({
       type: 'scatter',
       mode: 'lines',
-      name: n,
+      name: n.name + f,
       x: [],
       y: [],
-      // line: {color: '#CFBE17'}
+      line: {
+        // color: '#CFBE17',
+        width: 1,
+      },
+      marker: {
+        // color: '#CFBE17',
+        size: 2,
+      }
     });
   }
 
@@ -125,11 +139,11 @@ window.onload = async function() {
   try {
     var date = new Date();
     date.setDate(date.getDate() - 2);
-    await loadPlot1(date);
+    await loadPlot(date);
     date.setDate(date.getDate() + 1);
-    await loadPlot1(date);
+    await loadPlot(date);
     date.setDate(date.getDate() + 1);
-    await loadPlot1(date);
+    await loadPlot(date);
   } catch(e) {
     console.log(e);
   }
@@ -141,15 +155,17 @@ window.onload = async function() {
     var values = e.data.split(",");
     var data = {};
     for (n in values) {
-      var v = values[n].split(":", 2);
-      var element = document.getElementById(v[0]);
+      var i = values[n].indexOf(':');
+      var key = values[n].slice(0,i);
+      var v = values[n].slice(i+1);
+      var element = document.getElementById(key);
       if (element) {
-        element.innerHTML = v[1];
-        data[v[0]] = v[1];
-      } else if (v[0] == "c") {
-        console.log(v[1]);
+        element.innerHTML = v;
+        data[key] = v;
+      } else if (key == "c") {
+        console.log(v);
       } else {
-        console.log('Unknown message: ', values[n]);
+        // console.log('Unknown message: ', values[n]);
       }
     }
     try {
@@ -158,7 +174,7 @@ window.onload = async function() {
       var y = [];
       for (n of plot_values) {
         x.push([date]);
-        y.push([data[n]]);
+        y.push([data[n.name] * n.factor]);
       }
       Plotly.extendTraces('plot1', {
         x: x,
@@ -174,6 +190,14 @@ window.onload = async function() {
     }
     return false;
   };
+
+  var el;
+  el = document.getElementById("set_date");
+  el.onmouseup = el.ontouchend = async function(e) {
+    await loadPlot(d3.timeParse("%Y-%m-%d")(document.getElementById("date_input").value))
+  };
+
+  document.getElementById("date_input").value = (new Date()).toISOString().slice(0,10);
 }
 
 </script>
@@ -196,5 +220,8 @@ window.onload = async function() {
     <tr><td>pump</td><td id="pump"></td></tr>
     <tr><td>heater</td><td id="heater"></td></tr>
   </table>
+  <input type="text" id="date_input" value=""/>
+  <input type="button" id="set_date" value="load date"/>
+  <br/>
 </body>
 </html>
