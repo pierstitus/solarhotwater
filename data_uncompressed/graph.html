@@ -107,11 +107,13 @@ window.onload = async function() {
       type: 'linear'
     },
     dragmode: 'pan',
+    height: 600,
   };
 
   var config = {
     displayModeBar: true,
     scrollZoom: true,
+    responsive: true,
     // displaylogo: false,
     modeBarButtonsToRemove: ['autoScale2d', 'resetScale2d'],//  ['zoom2d', 'pan2d', 'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d']
     modeBarButtonsToAdd: [
@@ -194,10 +196,15 @@ window.onload = async function() {
   var el;
   el = document.getElementById("set_date");
   el.onmouseup = el.ontouchend = async function(e) {
-    await loadPlot(d3.timeParse("%Y-%m-%d")(document.getElementById("date_input").value))
+    var date = d3.timeParse("%Y-%m-%d")(document.getElementById("date_input").value);
+    await loadPlot(date);
+    date.setDate(date.getDate() - 1);
+    document.getElementById("date_input").value = d3.timeFormat("%Y-%m-%d")(date);
   };
 
-  document.getElementById("date_input").value = (new Date()).toISOString().slice(0,10);
+  var date = new Date();
+  date.setDate(date.getDate() - 3);
+  document.getElementById("date_input").value = d3.timeFormat("%Y-%m-%d")(date);
 }
 
 </script>
