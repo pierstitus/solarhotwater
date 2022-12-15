@@ -314,7 +314,7 @@ int pumpSpeed = 0;
 int heater = 0;
 bool backlight = false;
 
-float tSolarStartDelta = 20.0;
+float tSolarStartDelta = 25.0;
 
 unsigned long timeSensePrev = 0;
 unsigned long timePumpStart = -60*60000;
