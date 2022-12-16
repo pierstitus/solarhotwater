@@ -239,6 +239,7 @@ class FlowMeter {
   uint64_t prevuliter;
   uint32_t prevTime;
   float lpm;
+#ifdef FLOW_CALIBRATE
   volatile uint32_t count;
   volatile uint32_t sum;
   volatile uint32_t varSum;
@@ -247,6 +248,7 @@ class FlowMeter {
   volatile uint32_t maxd;
   uint32_t mean;
   float std;
+#endif
 
   FlowMeter() {}
 
@@ -258,6 +260,7 @@ class FlowMeter {
       prevTime = time;
     }
 
+#ifdef FLOW_CALIBRATE
     if (count < 10) {
       return false;
     }
@@ -269,19 +272,12 @@ class FlowMeter {
     count = 0;
     sum = 0;
     varSum = 0;
+#endif
     return true;
   }
 
   void IRAM_ATTR isr() {
-    uint32_t time = millis();
-    uint32_t delta = time - lastTime;
-    if (count == 0) {
-      meanEst = delta;
-    }
-    count++;
-    sum += delta;
-    varSum += pow2(delta - meanEst);
-    lastTime = time;
+    // for some reason the interrupt function has issues when it is a class method
   }
 };
 
@@ -289,6 +285,7 @@ void IRAM_ATTR isr(FlowMeter* f) {
   uint32_t time = millis();
   uint32_t delta = time - f->lastTime;
 
+#ifdef FLOW_CALIBRATE
   if (f->count == 0) {
     f->meanEst = delta;
     f->sum = 0;
@@ -301,6 +298,7 @@ void IRAM_ATTR isr(FlowMeter* f) {
   if (delta < f->mind) f->mind = delta;
   if (delta > f->maxd) f->maxd = delta;
   f->varSum += pow2(delta - f->meanEst);
+#endif
 
   f->lastTime = time;
   if (delta > 1000) delta = 1000;
@@ -952,6 +950,7 @@ void loop(void) {
     Serial.print("tSolarTo:      "); Serial.println(sensors.tSolarTo);
     Serial.print("tTapWater:     "); Serial.println(sensors.tTapWater);
 
+#ifdef FLOW_CALIBRATE
     if (flowSolar.calcAndReset())
       events.send("flowSolarMean:" + String(flowSolar.mean) +
                 ",flowSolarMin:" + String(flowSolar.mind) +
@@ -964,7 +963,10 @@ void loop(void) {
                 ",flowWaterMax:" + String(flowWater.maxd) +
                 ",flowWaterStd:" + String(flowWater.std, 2)
       );
-
+#else
+    flowSolar.calcAndReset();
+    flowWater.calcAndReset();
+#endif
     struct tm timeinfo;
     getLocalTime(&timeinfo);
     char datestr[32];
