@@ -939,10 +939,10 @@ void loop(void) {
     if (heater && (sensors.tBoilerTop > 80 || sensors.tBoilerTop > 80)) {
       setHeater(0);
     }
-    if ((heater & 2) && sensors.tBoilerTop > 40) {
+    if ((heater & 2) && sensors.tBoilerTop > 45) {
       setHeater(0);
     }
-    if ((heater & 5) && sensors.tBoilerMiddle > 50) {
+    if ((heater & 5) && sensors.tBoilerMiddle > 60) {
       setHeater(0);
     }
     Serial.print("tBoilerTop:    "); Serial.println(sensors.tBoilerTop);
