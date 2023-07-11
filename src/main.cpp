@@ -789,7 +789,7 @@ void loop(void) {
       selected = 0;
     } else {
       selected++;
-      if (selected == 4) selected = 0;
+      if (selected == 5) selected = 0;
     }
     lcd.setCursor(0, 2); lcd.print("        ");
     lcd.setCursor(0, 1);
@@ -813,6 +813,11 @@ void loop(void) {
       lcd.print("Reset:   ");
       input.encoder = 0;
       lcd.setCursor(0, 2); lcd.print("no");
+      break;
+    case 4:
+      lcd.clear();
+      lcd.print("Info:   ");
+      lcd.setCursor(0, 2); lcd.print(WiFi.localIP().toString());
       break;
     }
     Serial.println("Button pressed");
@@ -988,6 +993,7 @@ void loop(void) {
               ",date:" + datestr
     );
 
+    if (selected < 4) {
 //      ----------------------
 //      |       ←75°1.2'┐___ |
 //      |         ┌─75°─│65°│|
@@ -995,19 +1001,20 @@ void loop(void) {
 //      |         └─32°─│23°│|
 //      ----------------------
 // (' = l/m)
-    lcd.setCursor(7, 0); lcd.print("\10  \6   \7\2___ ");
-    lcd.setCursor(8, 1); lcd.print(" \1---\6-\5  \6\5");
-    lcd.setCursor(8, 2); lcd.print("  \6   \7\5  \6\5");
-    lcd.setCursor(8, 3); lcd.print(" \3---\6-\5  \6\5");
-    lcd.setCursor(8, 0); lcd.print(int(0.5f+sensors.tTapWater));
-    lcd.setCursor(11, 0); lcd.print(flowWater.lpm, 1);
-    lcd.setCursor(11, 1); lcd.print(int(0.5f+sensors.tSolarFrom));
-    lcd.setCursor(16, 1); lcd.print(int(0.5f+sensors.tBoilerTop));
-    lcd.setCursor(8, 2); lcd.print(int(0.5f+sensors.tSolar));
-    lcd.setCursor(11, 2); lcd.print(flowSolar.lpm, 1);
-    lcd.setCursor(16, 2); lcd.print(int(0.5f+sensors.tBoilerMiddle));
-    lcd.setCursor(11, 3); lcd.print(int(0.5f+sensors.tSolarTo));
-    lcd.setCursor(16, 3); lcd.print(int(0.5f+sensors.tBoilerBottom));
+      lcd.setCursor(7, 0); lcd.print("\10  \6   \7\2___ ");
+      lcd.setCursor(8, 1); lcd.print(" \1---\6-\5  \6\5");
+      lcd.setCursor(8, 2); lcd.print("  \6   \7\5  \6\5");
+      lcd.setCursor(8, 3); lcd.print(" \3---\6-\5  \6\5");
+      lcd.setCursor(8, 0); lcd.print(int(0.5f+sensors.tTapWater));
+      lcd.setCursor(11, 0); lcd.print(flowWater.lpm, 1);
+      lcd.setCursor(11, 1); lcd.print(int(0.5f+sensors.tSolarFrom));
+      lcd.setCursor(16, 1); lcd.print(int(0.5f+sensors.tBoilerTop));
+      lcd.setCursor(8, 2); lcd.print(int(0.5f+sensors.tSolar));
+      lcd.setCursor(11, 2); lcd.print(flowSolar.lpm, 1);
+      lcd.setCursor(16, 2); lcd.print(int(0.5f+sensors.tBoilerMiddle));
+      lcd.setCursor(11, 3); lcd.print(int(0.5f+sensors.tSolarTo));
+      lcd.setCursor(16, 3); lcd.print(int(0.5f+sensors.tBoilerBottom));
+    }
 
     if (flowWater.lpm > 0 || currentMillis - timePumpStart < 6 * ONE_MINUTE) {
       if (currentMillis - timeLastLog > fastLogInterval) {
