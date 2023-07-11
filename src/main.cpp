@@ -832,36 +832,11 @@ void loop(void) {
       lcd.setCursor(0, 2); lcd.print("        ");
       lcd.setCursor(0, 2);
       if (selected == 0) {
-        int val = constrain(input.encoder, 0, 3);
+        int val = constrain(input.encoder, 0, 6);
         input.encoder = val;
-        setHeater((1<<val)>>1);
+        // setHeater((1<<val)>>1);
+        setHeater(val);
         lcd.print(HEATER_TEXT[heater]);
-        // switch (val) {
-        //   case 0:
-        //     lcd.print(" off");
-        //     relayOff(PIN_HEATER_300);
-        //     relayOff(PIN_HEATER_800);
-        //     relayOff(PIN_HEATER_1500);
-        //     break;
-        //   case 1:
-        //     lcd.print(" 300W");
-        //     relayOn(PIN_HEATER_300);
-        //     relayOff(PIN_HEATER_800);
-        //     relayOff(PIN_HEATER_1500);
-        //     break;
-        //   case 2:
-        //     lcd.print(" 800W");
-        //     relayOff(PIN_HEATER_300);
-        //     relayOn(PIN_HEATER_800);
-        //     relayOff(PIN_HEATER_1500);
-        //     break;
-        //   case 3:
-        //     lcd.print("1500W");
-        //     relayOff(PIN_HEATER_300);
-        //     relayOff(PIN_HEATER_800);
-        //     relayOn(PIN_HEATER_1500);
-        //     break;
-        // }
       } else if (selected == 1) {
         int val = constrain(input.encoder, 0, 100);
         input.encoder = val;
