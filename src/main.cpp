@@ -878,6 +878,8 @@ void loop(void) {
 
     if (backlight && currentMillis > timeLastInput + 30000) {
       setBacklight(false);
+      lcd.init();
+      lcd.clear();
     }
 
     timeSensePrev = currentMillis;
