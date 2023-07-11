@@ -852,9 +852,8 @@ void loop(void) {
         input.encoder = val;
         if (val == 5) {
           lcd.print("yes");
-          for (int n=1; n<5000; n++) {
+          for (int n=1; n<1000; n++) {
             delay(1);
-            lcd.setCursor(4, 2); lcd.print(5-n/1000);
             if (input.encoder < 5) break;
           }
           if (input.encoder >= 5) {
@@ -912,11 +911,12 @@ void loop(void) {
     if (pumpSpeed > 0
         && ((currentMillis - timePumpStart > 5*60000
              && sensors.tSolarFrom < sensors.tSolarTo)
-            || sensors.tBoilerMiddle > 90)) {
+            || sensors.tBoilerTop > 85
+            || sensors.tBoilerMiddle > 85)) {
       setPumpSpeed(0);
     }
 
-    if (heater && (sensors.tBoilerTop > 80 || sensors.tBoilerTop > 80)) {
+    if (heater && (sensors.tBoilerMiddle > 80 || sensors.tBoilerTop > 80)) {
       setHeater(0);
     }
     if ((heater & 2) && sensors.tBoilerTop > 45) {
