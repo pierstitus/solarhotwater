@@ -792,7 +792,7 @@ void loop(void) {
       selected = 0;
     } else {
       selected++;
-      if (selected == 5) selected = 0;
+      if (selected == 3) selected = 0;
     }
     lcd.setCursor(0, 2); lcd.print("        ");
     lcd.setCursor(0, 1);
@@ -803,21 +803,21 @@ void loop(void) {
       lcd.setCursor(0, 2); lcd.print(HEATER_TEXT[heater]);
       break;
     case 1:
-      lcd.print("Pomp:  ");
-      input.encoder = pumpSpeed;
-      lcd.setCursor(0, 2); lcd.print(input.encoder);
-      break;
-    case 2:
-      lcd.print("RTD:   ");
-      input.encoder = RTDoffset;
-      lcd.setCursor(0, 2); lcd.print(input.encoder);
-      break;
-    case 3:
+    //   lcd.print("Pomp:  ");
+    //   input.encoder = pumpSpeed;
+    //   lcd.setCursor(0, 2); lcd.print(input.encoder);
+    //   break;
+    // case 2:
+    //   lcd.print("RTD:   ");
+    //   input.encoder = RTDoffset;
+    //   lcd.setCursor(0, 2); lcd.print(input.encoder);
+    //   break;
+    // case 3:
       lcd.print("Reset:   ");
       input.encoder = 0;
       lcd.setCursor(0, 2); lcd.print("no");
       break;
-    case 4:
+    case 2: //4:
       lcd.clear();
       lcd.print("Info:   ");
       lcd.setCursor(0, 2); lcd.print(WiFi.localIP().toString());
@@ -831,6 +831,10 @@ void loop(void) {
     timeLastInput = currentMillis;
     if (!backlight) {
       setBacklight(true);
+      selected = 0;
+      lcd.setCursor(0, 1); lcd.print("Heater:");
+      lcd.setCursor(0, 2); lcd.print(HEATER_TEXT[heater]);
+      input.encoder = heater;
     } else {
       lcd.setCursor(0, 2); lcd.print("        ");
       lcd.setCursor(0, 2);
@@ -840,17 +844,17 @@ void loop(void) {
         // setHeater((1<<val)>>1);
         setHeater(val);
         lcd.print(HEATER_TEXT[heater]);
+      // } else if (selected == 1) {
+      //   int val = constrain(input.encoder, 0, 100);
+      //   input.encoder = val;
+      //   setPumpSpeed(val);
+      //   timePumpStart = millis();
+      //   lcd.print(val);
+      // } else if (selected == 2) {
+      //   int val = input.encoder;
+      //   RTDoffset = val;
+      //   lcd.print(val);
       } else if (selected == 1) {
-        int val = constrain(input.encoder, 0, 100);
-        input.encoder = val;
-        setPumpSpeed(val);
-        timePumpStart = millis();
-        lcd.print(val);
-      } else if (selected == 2) {
-        int val = input.encoder;
-        RTDoffset = val;
-        lcd.print(val);
-      } else if (selected == 3) {
         int val = constrain(input.encoder, 0, 10);
         input.encoder = val;
         if (val == 5) {
