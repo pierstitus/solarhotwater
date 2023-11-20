@@ -439,6 +439,18 @@ void setHeater(int heat) {
   }
 }
 
+void initLCD() {
+  lcd.init();
+  lcd.createChar(1, char_topleft);
+  lcd.createChar(2, char_topright);
+  lcd.createChar(3, char_bottomleft);
+  lcd.createChar(4, char_bottomright);
+  lcd.createChar(5, char_pipe);
+  lcd.createChar(6, char_degree);
+  lcd.createChar(7, char_lpm);
+  lcd.createChar(0, char_leftarrow); // custom character 0 is also accessable as \10
+}
+
 void setBacklight(bool bl) {
   backlight = bl;
   lcd.setBacklight(bl);
@@ -587,7 +599,7 @@ void setup(void) {
   pinMode(PIN_FLOW_SENSOR_SOLAR, INPUT_PULLUP);
   pinMode(PIN_FLOW_SENSOR_WATER, INPUT_PULLUP);
 
-  lcd.init();
+  initLCD();
   // Print a message to the LCD.
   setBacklight(true);
   lcd.setCursor(3,0); lcd.print("Zonneboiler");
@@ -636,15 +648,6 @@ void setup(void) {
 
   SPIFFS.begin();                             // Start the SPI Flash File System (SPIFFS)
   initSDCard();
-
-  lcd.createChar(1, char_topleft);
-  lcd.createChar(2, char_topright);
-  lcd.createChar(3, char_bottomleft);
-  lcd.createChar(4, char_bottomright);
-  lcd.createChar(5, char_pipe);
-  lcd.createChar(6, char_degree);
-  lcd.createChar(7, char_lpm);
-  lcd.createChar(0, char_leftarrow); // custom character 0 is also accessable as \10
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
@@ -877,7 +880,7 @@ void loop(void) {
 
     if (backlight && currentMillis > timeLastInput + 30000) {
       setBacklight(false);
-      lcd.init();
+      initLCD();
       lcd.clear();
     }
 
