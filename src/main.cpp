@@ -932,6 +932,10 @@ void loop(void) {
       pumpError = 0;
     }
 
+    // Winter mode, alway heat electric with 300W
+    if (!heater && sensors.tBoilerMiddle < 55) {
+      setHeater(1);
+    }
 
     if (heater && (sensors.tBoilerMiddle > 80 || sensors.tBoilerTop > 80)) {
       setHeater(0);
