@@ -920,7 +920,8 @@ void loop(void) {
         && ((currentMillis - timePumpStart > 5*60000
              && sensors.tSolarFrom < sensors.tSolarTo)
             || sensors.tBoilerTop > 85
-            || sensors.tBoilerMiddle > 85)) {
+            || sensors.tBoilerMiddle > 85
+            || sensors.tSolar < 10)) {
       setPumpSpeed(0);
     }
     if (pumpSpeed > 0 && flowSolar.lpm < 0.01f) {
