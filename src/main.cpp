@@ -309,6 +309,7 @@ void IRAM_ATTR isr(FlowMeter* f) {
 FlowMeter flowWater, flowSolar;
 
 int pumpSpeed = 0;
+int pumpError = 0;
 int heater = 0;
 bool backlight = false;
 
@@ -922,6 +923,14 @@ void loop(void) {
             || sensors.tBoilerMiddle > 85)) {
       setPumpSpeed(0);
     }
+    if (pumpSpeed > 0 && flowSolar.lpm < 0.01f) {
+      if (pumpError++ > 30) {
+        setPumpSpeed(-1);
+      }
+    } else {
+      pumpError = 0;
+    }
+
 
     if (heater && (sensors.tBoilerMiddle > 80 || sensors.tBoilerTop > 80)) {
       setHeater(0);
