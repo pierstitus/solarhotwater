@@ -653,6 +653,7 @@ void setup(void) {
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
   Serial.println("");
+  // TODO: when WiFi is not available code execution is very slow!
 
   hw_timer_t * timer = timerBegin(0, 80, true);
   timerAttachInterrupt(timer, encoderInterrupt, true);
@@ -690,9 +691,14 @@ void setup(void) {
   pinMode(PIN_FLOW_SENSOR_SOLAR, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(PIN_FLOW_SENSOR_SOLAR), flowSolarInterrupt, RISING);
 
-  // Wait for connection
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
+  int n = 0;
+  while (WiFi.status() != WL_CONNECTED) {  // Wait for the Wi-Fi to connect
+    delay(250);
+    n += 250;
+    if (n > 5000) {
+      Serial.println("Connection failed");
+      break;
+    }
     Serial.print(".");
   }
   Serial.println("");
