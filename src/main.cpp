@@ -626,7 +626,7 @@ void setup(void) {
         Serial.println("Connection failed");
         break;
       }
-      Serial.print('.');
+      Serial.print(".");
     }
 
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -637,7 +637,7 @@ void setup(void) {
     server.begin();
 
     lcd.setCursor(0,1);
-    lcd.print("Wifi pass: password");
+    lcd.print("Wifi pass: password ");
     lcd.setCursor(0,2);
     lcd.print("192.168.4.1/update");
     return;
@@ -899,7 +899,7 @@ void loop(void) {
     } else {
       sensors.tSolar = pt100.calculateTemperature(val - RTDoffset, RNOMINAL, RREF);
     }
-    Serial.print("Temperature = "); Serial.println(sensors.tSolar);
+    Serial.print("tSolar = "); Serial.println(sensors.tSolar);
     sensors.tBoilerTop    = tempSensors.getTempC(thermo.tBoilerTop);
     sensors.tBoilerMiddle = tempSensors.getTempC(thermo.tBoilerMiddle);
     sensors.tBoilerBottom = tempSensors.getTempC(thermo.tBoilerBottom);
@@ -907,9 +907,10 @@ void loop(void) {
     sensors.tSolarTo      = tempSensors.getTempC(thermo.tSolarTo);
     sensors.tTapWater     = tempSensors.getTempC(thermo.tTapWater);
     if (pumpSpeed == 0
-        && sensors.tSolar > sensors.tBoilerMiddle + tSolarStartDelta
-        && currentMillis - timePumpStart > 10*60000
-        && sensors.tBoilerMiddle < 90) {
+        && sensors.tSolar < 300.0f // sensor is connected
+        && sensors.tSolar > sensors.tBoilerMiddle + tSolarStartDelta // warm enough
+        && currentMillis - timePumpStart > 10*60000 // long enough after last try
+        && sensors.tBoilerMiddle < 90) { // boiler is not too hot
       setPumpSpeed(80);
       timePumpStart = currentMillis;
     }
@@ -934,7 +935,7 @@ void loop(void) {
 
     // Winter mode, alway heat electric with 300W
     if (!heater && sensors.tBoilerMiddle < 55) {
-      setHeater(1);
+      setHeater(4); // 4=1500W, 300 is broken
     }
 
     if (heater && (sensors.tBoilerMiddle > 80 || sensors.tBoilerTop > 80)) {
@@ -991,13 +992,13 @@ void loop(void) {
               ",date:" + datestr
     );
 
-    if (selected < 4) {
-//      ----------------------
-//      |       ←75°1.2'┐___ |
-//      |         ┌─75°─│65°│|
-//      |        86°0.8'│36°│|
-//      |         └─32°─│23°│|
-//      ----------------------
+    if (selected < 2) {
+// ┌────────────────────┐
+// │       ←75°1.2'┐___ │
+// │         ┌─75°─│65°││
+// │        86°0.8'│36°││
+// │         └─32°─│23°││
+// └────────────────────┘
 // (' = l/m)
       lcd.setCursor(7, 0); lcd.print("\10  \6   \7\2___ ");
       lcd.setCursor(8, 1); lcd.print(" \1---\6-\5  \6\5");
