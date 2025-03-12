@@ -80,6 +80,7 @@
 
 const char* ssid = STA_SSID;
 const char* password = STA_PASSWORD;
+const char* hostname = "zonneboiler";
 
 LiquidCrystal_I2C lcd(0x27,20,4);  // set the LCD address to 0x27 for a 16 chars and 2 line display
 
@@ -592,6 +593,8 @@ void setup(void) {
   Serial.begin(115200);
   Serial.print("Zonneboiler version ");
   Serial.println(SRC_REVISION);
+
+  WiFi.setHostname(hostname);
 
   pinMode(PIN_ROTARY_ENCODER_CLK, INPUT);
   pinMode(PIN_ROTARY_ENCODER_DATA, INPUT);
