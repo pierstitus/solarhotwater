@@ -424,17 +424,17 @@ void setHeater(int heat) {
   logNow = true;
 
   heater = heat;
-  if (heater & 1) {
-    relayOn(PIN_HEATER_300);
-  } else {
-    relayOff(PIN_HEATER_300);
-  }
-  if (heater & 2) {
-    relayOn(PIN_HEATER_800);
-  } else {
-    relayOff(PIN_HEATER_800);
-  }
-  if (heater & 4) {
+  // if (heater & 1) {
+  //   relayOn(PIN_HEATER_300);
+  // } else {
+  //   relayOff(PIN_HEATER_300);
+  // }
+  // if (heater & 2) {
+  //   relayOn(PIN_HEATER_800);
+  // } else {
+  //   relayOff(PIN_HEATER_800);
+  // }
+  if (heater) { // & 4) { // TODO: 300W and 800W are broken, so always use 1500W
     relayOn(PIN_HEATER_1500);
   } else {
     relayOff(PIN_HEATER_1500);
@@ -943,9 +943,9 @@ void loop(void) {
     }
 
     // Winter mode, alway heat electric with 300W
-    if (!heater && sensors.tBoilerMiddle < 55) {
-      setHeater(4); // 4=1500W, 300 is broken
-    }
+    // if (!heater && sensors.tBoilerMiddle < 55) {
+    //   setHeater(4); // 4=1500W, 300W is broken
+    // }
 
     if (heater && (sensors.tBoilerMiddle > 80 || sensors.tBoilerTop > 80)) {
       setHeater(0);
